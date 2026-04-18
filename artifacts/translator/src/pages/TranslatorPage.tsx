@@ -366,13 +366,13 @@ export default function TranslatorPage() {
             onClick={() => setActiveSpeaker("A")}
             className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${activeSpeaker === "A" ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-border hover:border-primary"}`}
           >
-            {getLang(langA).flag} Би
+            {getLang(langA).flag} Hi
           </button>
           <button
             onClick={() => setActiveSpeaker("B")}
             className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${activeSpeaker === "B" ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-border hover:border-primary"}`}
           >
-            {getLang(langB).flag} Гадаад хүн
+            {getLang(langB).flag} Сайн уу
           </button>
         </div>
 
