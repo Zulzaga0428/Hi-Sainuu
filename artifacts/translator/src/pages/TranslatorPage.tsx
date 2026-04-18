@@ -1,0 +1,246 @@
+import { useState } from "react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw } from "lucide-react";
+
+const LANGUAGES = [
+  { code: "mn", label: "Монгол", flag: "🇲🇳" },
+  { code: "en", label: "Англи", flag: "🇺🇸" },
+  { code: "zh", label: "Хятад", flag: "🇨🇳" },
+  { code: "ru", label: "Орос", flag: "🇷🇺" },
+  { code: "ja", label: "Япон", flag: "🇯🇵" },
+  { code: "ko", label: "Солонгос", flag: "🇰🇷" },
+];
+
+type Turn = {
+  id: number;
+  speaker: "A" | "B";
+  original: string;
+  translated: string;
+  langFrom: string;
+  langTo: string;
+};
+
+export default function TranslatorPage() {
+  const [langA, setLangA] = useState("mn");
+  const [langB, setLangB] = useState("en");
+  const [activeSpeaker, setActiveSpeaker] = useState<"A" | "B">("A");
+  const [recording, setRecording] = useState(false);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [showLangPicker, setShowLangPicker] = useState<"A" | "B" | null>(null);
+  const [status, setStatus] = useState<string>("");
+
+  const getLang = (code: string) => LANGUAGES.find((l) => l.code === code)!;
+
+  const handleRecord = () => {
+    if (recording) {
+      setRecording(false);
+      setStatus("Боловсруулж байна...");
+      setTimeout(() => {
+        const fromCode = activeSpeaker === "A" ? langA : langB;
+        const toCode = activeSpeaker === "A" ? langB : langA;
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            speaker: activeSpeaker,
+            original: "[Дуу бичигдлээ — API холбогдохоор бодит текст гарна]",
+            translated: "[Орчуулга гарна]",
+            langFrom: fromCode,
+            langTo: toCode,
+          },
+        ]);
+        setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
+        setStatus("");
+      }, 1200);
+    } else {
+      setRecording(true);
+      setStatus("Дуу бичиж байна...");
+    }
+  };
+
+  const clearAll = () => {
+    setTurns([]);
+    setActiveSpeaker("A");
+    setStatus("");
+  };
+
+  const currentFromLang = activeSpeaker === "A" ? getLang(langA) : getLang(langB);
+  const currentToLang = activeSpeaker === "A" ? getLang(langB) : getLang(langA);
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
+      {/* Header */}
+      <div className="bg-primary px-4 pt-10 pb-5 text-white">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Globe size={20} />
+            <h1 className="text-lg font-bold tracking-tight">AI Орчуулагч</h1>
+          </div>
+          {turns.length > 0 && (
+            <button
+              onClick={clearAll}
+              className="flex items-center gap-1 text-white/70 text-sm hover:text-white"
+            >
+              <RefreshCw size={14} />
+              Цэвэрлэх
+            </button>
+          )}
+        </div>
+
+        {/* Language pair selector */}
+        <div className="flex items-center gap-2">
+          {/* Lang A */}
+          <button
+            onClick={() => setShowLangPicker(showLangPicker === "A" ? null : "A")}
+            className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 rounded-xl py-3 px-4"
+          >
+            <span className="text-xl">{getLang(langA).flag}</span>
+            <span className="font-semibold text-sm">{getLang(langA).label}</span>
+            <ChevronDown size={14} className="text-white/70" />
+          </button>
+
+          <div className="text-white/50 text-lg font-light">↔</div>
+
+          {/* Lang B */}
+          <button
+            onClick={() => setShowLangPicker(showLangPicker === "B" ? null : "B")}
+            className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 rounded-xl py-3 px-4"
+          >
+            <span className="text-xl">{getLang(langB).flag}</span>
+            <span className="font-semibold text-sm">{getLang(langB).label}</span>
+            <ChevronDown size={14} className="text-white/70" />
+          </button>
+        </div>
+
+        {/* Language picker dropdown */}
+        {showLangPicker && (
+          <div className="mt-2 bg-white rounded-xl p-2 shadow-lg">
+            {LANGUAGES.filter((l) =>
+              showLangPicker === "A" ? l.code !== langB : l.code !== langA
+            ).map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => {
+                  if (showLangPicker === "A") setLangA(lang.code);
+                  else setLangB(lang.code);
+                  setShowLangPicker(null);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent text-foreground text-sm"
+              >
+                <span className="text-lg">{lang.flag}</span>
+                <span className="font-medium">{lang.label}</span>
+                {((showLangPicker === "A" && lang.code === langA) ||
+                  (showLangPicker === "B" && lang.code === langB)) && (
+                  <span className="ml-auto text-primary text-xs font-semibold">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Conversation area */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {turns.length === 0 && (
+          <div className="text-center text-muted-foreground py-16">
+            <Globe size={40} className="mx-auto mb-3 opacity-30" />
+            <p className="text-sm font-medium">Ярилцлага эхлэхэд товч дарна уу</p>
+            <p className="text-xs mt-1 opacity-70">
+              {getLang(langA).flag} {getLang(langA).label} ↔{" "}
+              {getLang(langB).flag} {getLang(langB).label}
+            </p>
+          </div>
+        )}
+        {turns.map((turn) => (
+          <div
+            key={turn.id}
+            className={`flex ${turn.speaker === "A" ? "justify-start" : "justify-end"}`}
+          >
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                turn.speaker === "A"
+                  ? "bg-white border border-border"
+                  : "bg-primary text-white"
+              }`}
+            >
+              <div className="text-xs font-semibold mb-1 opacity-60">
+                {getLang(turn.langFrom).flag} {getLang(turn.langFrom).label}
+              </div>
+              <p className="text-sm font-medium">{turn.original}</p>
+              <div className={`mt-2 pt-2 border-t ${turn.speaker === "A" ? "border-border" : "border-white/20"}`}>
+                <div className="text-xs font-semibold mb-0.5 opacity-60">
+                  {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
+                </div>
+                <p className={`text-sm ${turn.speaker === "A" ? "text-primary" : "text-white/90"}`}>
+                  {turn.translated}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bottom controls */}
+      <div className="px-4 pb-8 pt-4 border-t border-border bg-background">
+        {/* Current speaker indicator */}
+        <div className="text-center mb-3">
+          <span className="text-xs text-muted-foreground">
+            {currentFromLang.flag} {currentFromLang.label} →{" "}
+            {currentToLang.flag} {currentToLang.label}
+          </span>
+        </div>
+
+        {/* Status */}
+        {status && (
+          <div className="text-center text-sm text-primary font-medium mb-3 animate-pulse">
+            {status}
+          </div>
+        )}
+
+        {/* Speaker toggle */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setActiveSpeaker("A")}
+            className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+              activeSpeaker === "A"
+                ? "bg-primary text-white border-primary"
+                : "bg-white text-muted-foreground border-border hover:border-primary"
+            }`}
+          >
+            {getLang(langA).flag} Би
+          </button>
+          <button
+            onClick={() => setActiveSpeaker("B")}
+            className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+              activeSpeaker === "B"
+                ? "bg-primary text-white border-primary"
+                : "bg-white text-muted-foreground border-border hover:border-primary"
+            }`}
+          >
+            {getLang(langB).flag} Гадаад хүн
+          </button>
+        </div>
+
+        {/* Record button */}
+        <div className="flex justify-center">
+          <button
+            onClick={handleRecord}
+            className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
+              recording
+                ? "bg-destructive animate-pulse scale-110"
+                : "bg-primary hover:bg-primary/90"
+            }`}
+          >
+            {recording ? (
+              <MicOff size={32} className="text-white" />
+            ) : (
+              <Mic size={32} className="text-white" />
+            )}
+          </button>
+        </div>
+        <p className="text-center text-xs text-muted-foreground mt-3">
+          {recording ? "Зогсоохын тулд дахин дарна уу" : "Ярихын тулд дарна уу"}
+        </p>
+      </div>
+    </div>
+  );
+}
