@@ -40,7 +40,6 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
     }
 
     const langCode = (req.body.lang as string) || "mn";
-    const whisperLang = langCode === "mn" ? "mn" : langCode === "zh" ? "zh" : langCode;
 
     const audioFile = new File([req.file.buffer], "audio.webm", {
       type: req.file.mimetype || "audio/webm",
@@ -49,7 +48,8 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
-      language: whisperLang === "mn" ? undefined : whisperLang,
+      language: langCode,
+      prompt: langCode === "mn" ? "Монгол хэл дээр ярьж байна." : undefined,
     });
 
     res.json({ text: transcription.text });
