@@ -9,6 +9,19 @@ const LANGUAGES = [
   { code: "ja", label: "Япон", flag: "🇯🇵" },
   { code: "ko", label: "Солонгос", flag: "🇰🇷" },
   { code: "th", label: "Тайланд", flag: "🇹🇭" },
+  { code: "tr", label: "Турк", flag: "🇹🇷" },
+  { code: "de", label: "Герман", flag: "🇩🇪" },
+  { code: "fr", label: "Франц", flag: "🇫🇷" },
+  { code: "es", label: "Испани", flag: "🇪🇸" },
+  { code: "it", label: "Итали", flag: "🇮🇹" },
+  { code: "ar", label: "Араб", flag: "🇦🇪" },
+  { code: "hi", label: "Хинди", flag: "🇮🇳" },
+  { code: "vi", label: "Вьетнам", flag: "🇻🇳" },
+  { code: "id", label: "Индонези", flag: "🇮🇩" },
+  { code: "ms", label: "Малайз", flag: "🇲🇾" },
+  { code: "pt", label: "Португал", flag: "🇵🇹" },
+  { code: "pl", label: "Польш", flag: "🇵🇱" },
+  { code: "uk", label: "Украин", flag: "🇺🇦" },
 ];
 
 type Turn = {

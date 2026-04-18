@@ -16,6 +16,19 @@ const LANG_NAMES: Record<string, string> = {
   ja: "Japanese",
   ko: "Korean",
   th: "Thai",
+  tr: "Turkish",
+  de: "German",
+  fr: "French",
+  es: "Spanish",
+  it: "Italian",
+  ar: "Arabic",
+  hi: "Hindi",
+  vi: "Vietnamese",
+  id: "Indonesian",
+  ms: "Malay",
+  pt: "Portuguese",
+  pl: "Polish",
+  uk: "Ukrainian",
 };
 
 // POST /api/transcribe — audio → text via Whisper
