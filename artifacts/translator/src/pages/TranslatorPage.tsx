@@ -245,7 +245,7 @@ export default function TranslatorPage() {
   const currentToLang = activeSpeaker === "A" ? getLang(langB) : getLang(langA);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
+    <div className="bg-background flex flex-col max-w-md mx-auto overflow-hidden" style={{ height: "100dvh" }}>
       {/* Header */}
       <div className="bg-primary px-4 pt-10 pb-5 text-white">
         <div className="flex items-center justify-between mb-4">
