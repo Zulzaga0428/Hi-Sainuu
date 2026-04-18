@@ -1,0 +1,112 @@
+import { Router } from "express";
+import OpenAI from "openai";
+import multer from "multer";
+import { Readable } from "stream";
+
+const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const LANG_NAMES: Record<string, string> = {
+  mn: "Mongolian",
+  en: "English",
+  zh: "Chinese (Simplified)",
+  ru: "Russian",
+  ja: "Japanese",
+  ko: "Korean",
+  th: "Thai",
+};
+
+// POST /api/transcribe — audio → text via Whisper
+router.post("/transcribe", upload.single("audio"), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No audio file provided" });
+      return;
+    }
+
+    const langCode = (req.body.lang as string) || "mn";
+    const whisperLang = langCode === "mn" ? "mn" : langCode === "zh" ? "zh" : langCode;
+
+    const audioFile = new File([req.file.buffer], "audio.webm", {
+      type: req.file.mimetype || "audio/webm",
+    });
+
+    const transcription = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: "whisper-1",
+      language: whisperLang === "mn" ? undefined : whisperLang,
+    });
+
+    res.json({ text: transcription.text });
+  } catch (err: any) {
+    req.log.error({ err }, "Transcription error");
+    res.status(500).json({ error: err.message || "Transcription failed" });
+  }
+});
+
+// POST /api/translate — text → translated text via GPT
+router.post("/translate", async (req, res) => {
+  try {
+    const { text, fromLang, toLang } = req.body as {
+      text: string;
+      fromLang: string;
+      toLang: string;
+    };
+
+    if (!text || !fromLang || !toLang) {
+      res.status(400).json({ error: "Missing text, fromLang, or toLang" });
+      return;
+    }
+
+    const fromName = LANG_NAMES[fromLang] || fromLang;
+    const toName = LANG_NAMES[toLang] || toLang;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional translator. Translate the following text from ${fromName} to ${toName}. Return ONLY the translation, no explanations, no extra text.`,
+        },
+        { role: "user", content: text },
+      ],
+      temperature: 0.2,
+    });
+
+    const translated = completion.choices[0]?.message?.content?.trim() || "";
+    res.json({ translated });
+  } catch (err: any) {
+    req.log.error({ err }, "Translation error");
+    res.status(500).json({ error: err.message || "Translation failed" });
+  }
+});
+
+// POST /api/tts — text → audio via OpenAI TTS
+router.post("/tts", async (req, res) => {
+  try {
+    const { text, lang } = req.body as { text: string; lang: string };
+
+    if (!text) {
+      res.status(400).json({ error: "Missing text" });
+      return;
+    }
+
+    const mp3 = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "alloy",
+      input: text,
+    });
+
+    const buffer = Buffer.from(await mp3.arrayBuffer());
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Content-Length", String(buffer.length));
+    res.send(buffer);
+  } catch (err: any) {
+    req.log.error({ err }, "TTS error");
+    res.status(500).json({ error: err.message || "TTS failed" });
+  }
+});
+
+export default router;
