@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AI Орчуулагч"
+version = "1.0.0"
+id = "artifacts/translator"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21977
+
+[services.development]
+run = "pnpm --filter @workspace/translator run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/translator", "run", "build" ]
+publicDir = "artifacts/translator/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21977"
+BASE_PATH = "/"
