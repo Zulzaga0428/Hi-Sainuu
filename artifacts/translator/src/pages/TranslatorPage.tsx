@@ -447,7 +447,7 @@ export default function TranslatorPage() {
         </p>
         <p className="text-center text-xs mt-3 text-muted-foreground font-semibold tracking-wide">
           <a href="https://veio.digital/" target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition-opacity">
-            Built by VEIO<span style={{ color: "#ef4444" }}>•</span>
+            Built by VEIO<span style={{ color: "#CD2E3A" }}>•</span>
           </a>
         </p>
       </div>
