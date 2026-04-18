@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send } from "lucide-react";
 
 const LANGUAGES = [
@@ -82,25 +82,103 @@ export default function TranslatorPage() {
   const [error, setError] = useState<string>("");
   const [showTextInput, setShowTextInput] = useState(false);
   const [textDraft, setTextDraft] = useState("");
+  const [subtitle, setSubtitle] = useState<{ original: string; translated: string; toLang: string } | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const subtitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const getLang = (code: string) => LANGUAGES.find((l) => l.code === code)!;
+  const getLang = (code: string) => LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
+
+  // Waveform drawing loop
+  const drawWaveform = useCallback(() => {
+    const canvas = canvasRef.current;
+    const analyser = analyserRef.current;
+    if (!canvas || !analyser) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const bufLen = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufLen);
+    analyser.getByteFrequencyData(data);
+
+    ctx.clearRect(0, 0, W, H);
+
+    const barCount = 36;
+    const step = Math.floor(bufLen / barCount);
+    const barW = W / barCount - 2;
+
+    for (let i = 0; i < barCount; i++) {
+      const val = data[i * step] / 255;
+      const barH = Math.max(4, val * H * 0.9);
+      const x = i * (barW + 2) + 1;
+      const y = (H - barH) / 2;
+
+      const alpha = 0.5 + val * 0.5;
+      ctx.fillStyle = `rgba(205, 46, 58, ${alpha})`;
+      const r = barW / 2;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, barH, r);
+      ctx.fill();
+    }
+
+    animFrameRef.current = requestAnimationFrame(drawWaveform);
+  }, []);
+
+  const stopWaveform = useCallback(() => {
+    cancelAnimationFrame(animFrameRef.current);
+    analyserRef.current = null;
+    audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  const showSubtitle = useCallback((original: string, translated: string, toLang: string) => {
+    if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current);
+    setSubtitle({ original, translated, toLang });
+    subtitleTimerRef.current = setTimeout(() => setSubtitle(null), 5000);
+  }, []);
+
+  useEffect(() => () => {
+    stopWaveform();
+    if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current);
+  }, [stopWaveform]);
 
   const startRecording = async () => {
     setError("");
     setShowTextInput(false);
+    setSubtitle(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Setup Web Audio analyser
+      const audioCtx = new AudioContext();
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 128;
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      audioCtxRef.current = audioCtx;
+      analyserRef.current = analyser;
+      animFrameRef.current = requestAnimationFrame(drawWaveform);
+
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
-      mr.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        stopWaveform();
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         await processAudio(blob);
       };
@@ -125,12 +203,13 @@ export default function TranslatorPage() {
     const fromCode = activeSpeaker === "A" ? langA : langB;
     const toCode = activeSpeaker === "A" ? langB : langA;
     try {
-      setStatus("Дуу таниж байна (Whisper)...");
+      setStatus("Дуу таниж байна...");
       const original = await apiTranscribe(blob, fromCode);
-      setStatus("Орчуулж байна (GPT)...");
+      setStatus("Орчуулж байна...");
       const translated = await apiTranslate(original, fromCode, toCode);
       const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original, translated, langFrom: fromCode, langTo: toCode };
       setTurns((prev) => [...prev, newTurn]);
+      showSubtitle(original, translated, toCode);
       if (toCode !== "mn") {
         setStatus("Дуу гаргаж байна...");
         await playTTS(translated, toCode);
@@ -155,6 +234,7 @@ export default function TranslatorPage() {
       const translated = await apiTranslate(text, fromCode, toCode);
       const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original: text, translated, langFrom: fromCode, langTo: toCode };
       setTurns((prev) => [...prev, newTurn]);
+      showSubtitle(text, translated, toCode);
       if (toCode !== "mn") {
         setStatus("Дуу гаргаж байна...");
         await playTTS(translated, toCode);
@@ -189,16 +269,9 @@ export default function TranslatorPage() {
         URL.revokeObjectURL(imageUrl);
         return;
       }
-      const newTurn: Turn = {
-        id: Date.now(),
-        speaker: activeSpeaker,
-        original: data.detected,
-        translated: data.translated,
-        langFrom: "auto",
-        langTo: toLangCode,
-        imageUrl,
-      };
+      const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original: data.detected, translated: data.translated, langFrom: "auto", langTo: toLangCode, imageUrl };
       setTurns((prev) => [...prev, newTurn]);
+      showSubtitle(data.detected, data.translated, toLangCode);
       if (toLangCode !== "mn") {
         setStatus("Дуу гаргаж байна...");
         await playTTS(data.translated, toLangCode);
@@ -231,6 +304,7 @@ export default function TranslatorPage() {
     setError("");
     setShowTextInput(false);
     setTextDraft("");
+    setSubtitle(null);
   };
 
   const currentFromLang = activeSpeaker === "A" ? getLang(langA) : getLang(langB);
@@ -276,7 +350,7 @@ export default function TranslatorPage() {
 
         {/* Language picker dropdown */}
         {showLangPicker && (
-          <div className="mt-2 bg-white rounded-xl p-2 shadow-lg">
+          <div className="mt-2 bg-white rounded-xl p-2 shadow-lg max-h-64 overflow-y-auto">
             {LANGUAGES.filter((l) => showLangPicker === "A" ? l.code !== langB : l.code !== langA).map((lang) => (
               <button
                 key={lang.code}
@@ -342,26 +416,21 @@ export default function TranslatorPage() {
       </div>
 
       {/* Bottom controls */}
-      <div className="px-4 pb-6 pt-4 border-t border-border bg-background">
-        <div className="text-center mb-3">
+      <div className="px-4 pb-5 pt-3 border-t border-border bg-background">
+        <div className="text-center mb-2">
           <span className="text-xs text-muted-foreground">
             {currentFromLang.flag} {currentFromLang.label} → {currentToLang.flag} {currentToLang.label}
           </span>
         </div>
 
         {error && (
-          <div className="text-center text-sm text-destructive font-medium mb-3 bg-destructive/10 rounded-xl py-2 px-3">
+          <div className="text-center text-sm text-destructive font-medium mb-2 bg-destructive/10 rounded-xl py-2 px-3">
             {error}
-          </div>
-        )}
-        {status && (
-          <div className="text-center text-sm text-primary font-medium mb-3 animate-pulse">
-            {status}
           </div>
         )}
 
         {/* Speaker toggle */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-3">
           <button
             onClick={() => setActiveSpeaker("A")}
             className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${activeSpeaker === "A" ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-border hover:border-primary"}`}
@@ -376,52 +445,53 @@ export default function TranslatorPage() {
           </button>
         </div>
 
-        {/* Text input area — shown when keyboard button is active */}
+        {/* Text input area */}
         {showTextInput && (
-          <div className="mb-4 flex gap-2 items-end">
+          <div className="mb-3 flex gap-2 items-end">
             <textarea
               ref={textInputRef}
               value={textDraft}
               onChange={(e) => setTextDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendTextMessage();
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTextMessage(); } }}
               placeholder={`${currentFromLang.flag} ${currentFromLang.label}-аар бичнэ үү...`}
               rows={2}
               className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
             />
-            <button
-              onClick={sendTextMessage}
-              disabled={!textDraft.trim() || !!status}
-              className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:bg-primary/90 transition-all flex-shrink-0"
-            >
+            <button onClick={sendTextMessage} disabled={!textDraft.trim() || !!status}
+              className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:bg-primary/90 transition-all flex-shrink-0">
               <Send size={16} />
             </button>
-            <button
-              onClick={() => { setShowTextInput(false); setTextDraft(""); }}
-              className="w-10 h-10 rounded-xl border border-border text-muted-foreground flex items-center justify-center hover:text-foreground transition-all flex-shrink-0"
-            >
+            <button onClick={() => { setShowTextInput(false); setTextDraft(""); }}
+              className="w-10 h-10 rounded-xl border border-border text-muted-foreground flex items-center justify-center hover:text-foreground transition-all flex-shrink-0">
               <X size={16} />
             </button>
           </div>
         )}
 
+        {/* Waveform canvas — visible while recording */}
+        <div className="flex justify-center mb-2" style={{ height: 48 }}>
+          {recording ? (
+            <canvas
+              ref={canvasRef}
+              width={280}
+              height={48}
+              className="rounded-xl"
+            />
+          ) : subtitle ? (
+            <div className="w-full text-center px-2 animate-fade-in">
+              <p className="text-xs text-muted-foreground truncate">{subtitle.original}</p>
+              <p className="text-base font-semibold text-primary leading-tight line-clamp-2">{subtitle.translated}</p>
+            </div>
+          ) : status ? (
+            <p className="text-sm text-primary font-medium animate-pulse self-center">{status}</p>
+          ) : null}
+        </div>
+
         {/* Hidden camera input */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleCameraCapture}
-        />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleCameraCapture} />
 
         {/* Keyboard + Mic + Camera */}
         <div className="flex items-center justify-center gap-6">
-          {/* Text / keyboard button */}
           <button
             onClick={toggleTextInput}
             disabled={recording}
@@ -430,16 +500,14 @@ export default function TranslatorPage() {
             <Keyboard size={20} />
           </button>
 
-          {/* Record button */}
           <button
             onClick={handleMicPress}
             disabled={!!status && !recording}
-            className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50 ${recording ? "bg-destructive animate-pulse scale-110" : "bg-primary hover:bg-primary/90"}`}
+            className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50 ${recording ? "bg-destructive scale-110" : "bg-primary hover:bg-primary/90"}`}
           >
             {recording ? <MicOff size={32} className="text-white" /> : <Mic size={32} className="text-white" />}
           </button>
 
-          {/* Camera button */}
           <button
             onClick={() => cameraInputRef.current?.click()}
             disabled={!!status || recording}
@@ -449,16 +517,10 @@ export default function TranslatorPage() {
           </button>
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-3">
-          {recording
-            ? "Зогсоохын тулд дахин дарна уу"
-            : showTextInput
-            ? "Бичээд Enter дарна уу"
-            : status
-            ? "Боловсруулж байна..."
-            : "Ярихын тулд дарна уу"}
+        <p className="text-center text-xs text-muted-foreground mt-2">
+          {recording ? "Зогсоохын тулд дахин дарна уу" : showTextInput ? "Бичээд Enter дарна уу" : "Ярихын тулд дарна уу"}
         </p>
-        <p className="text-center text-xs mt-3 text-muted-foreground font-semibold tracking-wide">
+        <p className="text-center text-xs mt-2 text-muted-foreground font-semibold tracking-wide">
           <a href="https://veio.digital/" target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition-opacity">
             Built by VEIO<span style={{ color: "#CD2E3A" }}>•</span>
           </a>
