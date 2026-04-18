@@ -157,7 +157,7 @@ export default function TranslatorPage() {
       <div className="bg-primary px-4 pt-10 pb-5 text-white">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Globe size={20} />
+            <img src="/logo.png" alt="Hi Сайн уу" className="w-8 h-8 rounded-lg object-cover" />
             <h1 className="text-lg font-bold tracking-tight">Hi Сайн уу</h1>
           </div>
           {turns.length > 0 && (
