@@ -353,8 +353,10 @@ export default function TranslatorPage() {
             ? "Боловсруулж байна..."
             : "Ярихын тулд дарна уу"}
         </p>
-        <p className="text-center text-xs mt-4 font-semibold tracking-wide" style={{ color: "#ef4444" }}>
-          Built by VEIO•
+        <p className="text-center text-xs mt-4 text-muted-foreground font-semibold tracking-wide">
+          <a href="https://veio.digital/" target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition-opacity">
+            Built by VEIO<span style={{ color: "#ef4444" }}>•</span>
+          </a>
         </p>
       </div>
     </div>
