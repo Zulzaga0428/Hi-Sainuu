@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Mic, MicOff, Globe, ChevronDown, RefreshCw } from "lucide-react";
+import { useState, useRef } from "react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2 } from "lucide-react";
 
 const LANGUAGES = [
   { code: "mn", label: "Монгол", flag: "🇲🇳" },
@@ -8,6 +8,7 @@ const LANGUAGES = [
   { code: "ru", label: "Орос", flag: "🇷🇺" },
   { code: "ja", label: "Япон", flag: "🇯🇵" },
   { code: "ko", label: "Солонгос", flag: "🇰🇷" },
+  { code: "th", label: "Тайланд", flag: "🇹🇭" },
 ];
 
 type Turn = {
@@ -19,6 +20,43 @@ type Turn = {
   langTo: string;
 };
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+async function apiTranscribe(audioBlob: Blob, lang: string): Promise<string> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "audio.webm");
+  form.append("lang", lang);
+  const res = await fetch(`${BASE}/api/transcribe`, { method: "POST", body: form });
+  if (!res.ok) throw new Error("Дуу таниж чадсангүй");
+  const data = await res.json();
+  return data.text as string;
+}
+
+async function apiTranslate(text: string, fromLang: string, toLang: string): Promise<string> {
+  const res = await fetch(`${BASE}/api/translate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, fromLang, toLang }),
+  });
+  if (!res.ok) throw new Error("Орчуулж чадсангүй");
+  const data = await res.json();
+  return data.translated as string;
+}
+
+async function playTTS(text: string, lang: string) {
+  const res = await fetch(`${BASE}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, lang }),
+  });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.play();
+  audio.onended = () => URL.revokeObjectURL(url);
+}
+
 export default function TranslatorPage() {
   const [langA, setLangA] = useState("mn");
   const [langB, setLangB] = useState("en");
@@ -27,40 +65,87 @@ export default function TranslatorPage() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [showLangPicker, setShowLangPicker] = useState<"A" | "B" | null>(null);
   const [status, setStatus] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code)!;
 
-  const handleRecord = () => {
-    if (recording) {
-      setRecording(false);
-      setStatus("Боловсруулж байна...");
-      setTimeout(() => {
-        const fromCode = activeSpeaker === "A" ? langA : langB;
-        const toCode = activeSpeaker === "A" ? langB : langA;
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            speaker: activeSpeaker,
-            original: "[Дуу бичигдлээ — API холбогдохоор бодит текст гарна]",
-            translated: "[Орчуулга гарна]",
-            langFrom: fromCode,
-            langTo: toCode,
-          },
-        ]);
-        setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
-        setStatus("");
-      }, 1200);
-    } else {
+  const startRecording = async () => {
+    setError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await processAudio(blob);
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
       setRecording(true);
       setStatus("Дуу бичиж байна...");
+    } catch {
+      setError("Микрофонд хандах зөвшөөрөл өгнө үү");
     }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && recording) {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+      setStatus("Боловсруулж байна...");
+    }
+  };
+
+  const processAudio = async (blob: Blob) => {
+    const fromCode = activeSpeaker === "A" ? langA : langB;
+    const toCode = activeSpeaker === "A" ? langB : langA;
+    try {
+      setStatus("Дуу таниж байна (Whisper)...");
+      const original = await apiTranscribe(blob, fromCode);
+
+      setStatus("Орчуулж байна (GPT)...");
+      const translated = await apiTranslate(original, fromCode, toCode);
+
+      const newTurn: Turn = {
+        id: Date.now(),
+        speaker: activeSpeaker,
+        original,
+        translated,
+        langFrom: fromCode,
+        langTo: toCode,
+      };
+      setTurns((prev) => [...prev, newTurn]);
+
+      // TTS: гадаад хэлийг дуугаргана (Монгол TTS муу тул зөвхөн гадаад хэлийг)
+      if (toCode !== "mn") {
+        setStatus("Дуу гаргаж байна...");
+        await playTTS(translated, toCode);
+      }
+
+      setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
+      setStatus("");
+    } catch (err: any) {
+      setError(err.message || "Алдаа гарлаа");
+      setStatus("");
+    }
+  };
+
+  const handleMicPress = () => {
+    if (recording) stopRecording();
+    else startRecording();
   };
 
   const clearAll = () => {
     setTurns([]);
     setActiveSpeaker("A");
     setStatus("");
+    setError("");
   };
 
   const currentFromLang = activeSpeaker === "A" ? getLang(langA) : getLang(langB);
@@ -88,7 +173,6 @@ export default function TranslatorPage() {
 
         {/* Language pair selector */}
         <div className="flex items-center gap-2">
-          {/* Lang A */}
           <button
             onClick={() => setShowLangPicker(showLangPicker === "A" ? null : "A")}
             className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 rounded-xl py-3 px-4"
@@ -100,7 +184,6 @@ export default function TranslatorPage() {
 
           <div className="text-white/50 text-lg font-light">↔</div>
 
-          {/* Lang B */}
           <button
             onClick={() => setShowLangPicker(showLangPicker === "B" ? null : "B")}
             className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 rounded-xl py-3 px-4"
@@ -140,7 +223,7 @@ export default function TranslatorPage() {
 
       {/* Conversation area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {turns.length === 0 && (
+        {turns.length === 0 && !status && (
           <div className="text-center text-muted-foreground py-16">
             <Globe size={40} className="mx-auto mb-3 opacity-30" />
             <p className="text-sm font-medium">Ярилцлага эхлэхэд товч дарна уу</p>
@@ -166,11 +249,29 @@ export default function TranslatorPage() {
                 {getLang(turn.langFrom).flag} {getLang(turn.langFrom).label}
               </div>
               <p className="text-sm font-medium">{turn.original}</p>
-              <div className={`mt-2 pt-2 border-t ${turn.speaker === "A" ? "border-border" : "border-white/20"}`}>
-                <div className="text-xs font-semibold mb-0.5 opacity-60">
-                  {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
+              <div
+                className={`mt-2 pt-2 border-t ${
+                  turn.speaker === "A" ? "border-border" : "border-white/20"
+                }`}
+              >
+                <div className="flex items-center gap-1 mb-0.5">
+                  <div className="text-xs font-semibold opacity-60">
+                    {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
+                  </div>
+                  {turn.langTo !== "mn" && (
+                    <button
+                      onClick={() => playTTS(turn.translated, turn.langTo)}
+                      className="opacity-50 hover:opacity-100 ml-1"
+                    >
+                      <Volume2 size={12} />
+                    </button>
+                  )}
                 </div>
-                <p className={`text-sm ${turn.speaker === "A" ? "text-primary" : "text-white/90"}`}>
+                <p
+                  className={`text-sm ${
+                    turn.speaker === "A" ? "text-primary" : "text-white/90"
+                  }`}
+                >
                   {turn.translated}
                 </p>
               </div>
@@ -188,6 +289,13 @@ export default function TranslatorPage() {
             {currentToLang.flag} {currentToLang.label}
           </span>
         </div>
+
+        {/* Error */}
+        {error && (
+          <div className="text-center text-sm text-destructive font-medium mb-3 bg-destructive/10 rounded-xl py-2 px-3">
+            {error}
+          </div>
+        )}
 
         {/* Status */}
         {status && (
@@ -223,8 +331,9 @@ export default function TranslatorPage() {
         {/* Record button */}
         <div className="flex justify-center">
           <button
-            onClick={handleRecord}
-            className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
+            onClick={handleMicPress}
+            disabled={!!status && !recording}
+            className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50 ${
               recording
                 ? "bg-destructive animate-pulse scale-110"
                 : "bg-primary hover:bg-primary/90"
@@ -238,7 +347,11 @@ export default function TranslatorPage() {
           </button>
         </div>
         <p className="text-center text-xs text-muted-foreground mt-3">
-          {recording ? "Зогсоохын тулд дахин дарна уу" : "Ярихын тулд дарна уу"}
+          {recording
+            ? "Зогсоохын тулд дахин дарна уу"
+            : status
+            ? "Боловсруулж байна..."
+            : "Ярихын тулд дарна уу"}
         </p>
       </div>
     </div>
