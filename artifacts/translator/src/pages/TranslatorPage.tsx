@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send } from "lucide-react";
 
 const LANGUAGES = [
@@ -88,73 +88,19 @@ export default function TranslatorPage() {
   const chunksRef = useRef<Blob[]>([]);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const animFrameRef = useRef<number>(0);
   const subtitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
 
-  // Waveform drawing loop
-  const drawWaveform = useCallback(() => {
-    const canvas = canvasRef.current;
-    const analyser = analyserRef.current;
-    if (!canvas || !analyser) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const W = canvas.width;
-    const H = canvas.height;
-    const bufLen = analyser.frequencyBinCount;
-    const data = new Uint8Array(bufLen);
-    analyser.getByteFrequencyData(data);
-
-    ctx.clearRect(0, 0, W, H);
-
-    const barCount = 36;
-    const step = Math.floor(bufLen / barCount);
-    const barW = W / barCount - 2;
-
-    for (let i = 0; i < barCount; i++) {
-      const val = data[i * step] / 255;
-      const barH = Math.max(4, val * H * 0.9);
-      const x = i * (barW + 2) + 1;
-      const y = (H - barH) / 2;
-
-      const alpha = 0.5 + val * 0.5;
-      ctx.fillStyle = `rgba(205, 46, 58, ${alpha})`;
-      const r = barW / 2;
-      ctx.beginPath();
-      ctx.roundRect(x, y, barW, barH, r);
-      ctx.fill();
-    }
-
-    animFrameRef.current = requestAnimationFrame(drawWaveform);
-  }, []);
-
-  const stopWaveform = useCallback(() => {
-    cancelAnimationFrame(animFrameRef.current);
-    analyserRef.current = null;
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  }, []);
-
-  const showSubtitle = useCallback((original: string, translated: string, toLang: string) => {
+  const showSubtitle = (original: string, translated: string, toLang: string) => {
     if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current);
     setSubtitle({ original, translated, toLang });
     subtitleTimerRef.current = setTimeout(() => setSubtitle(null), 5000);
-  }, []);
+  };
 
   useEffect(() => () => {
-    stopWaveform();
     if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current);
-  }, [stopWaveform]);
+  }, []);
 
   const startRecording = async () => {
     setError("");
@@ -162,23 +108,11 @@ export default function TranslatorPage() {
     setSubtitle(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Setup Web Audio analyser
-      const audioCtx = new AudioContext();
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 128;
-      const source = audioCtx.createMediaStreamSource(stream);
-      source.connect(analyser);
-      audioCtxRef.current = audioCtx;
-      analyserRef.current = analyser;
-      animFrameRef.current = requestAnimationFrame(drawWaveform);
-
       const mr = new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        stopWaveform();
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         await processAudio(blob);
       };
@@ -468,22 +402,33 @@ export default function TranslatorPage() {
           </div>
         )}
 
-        {/* Waveform canvas — visible while recording */}
-        <div className="flex justify-center mb-2" style={{ height: 48 }}>
+        {/* Waveform / subtitle area */}
+        <div className="flex justify-center items-center mb-2" style={{ height: 52 }}>
           {recording ? (
-            <canvas
-              ref={canvasRef}
-              width={280}
-              height={48}
-              className="rounded-xl"
-            />
+            <div className="flex items-center gap-[3px] h-10">
+              {Array.from({ length: 28 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-full"
+                  style={{
+                    width: 4,
+                    backgroundColor: "#CD2E3A",
+                    animation: `wavebar 0.9s ease-in-out infinite`,
+                    animationDelay: `${(i % 7) * 0.12}s`,
+                    height: "100%",
+                    transformOrigin: "center",
+                    transform: "scaleY(0.15)",
+                  }}
+                />
+              ))}
+            </div>
           ) : subtitle ? (
-            <div className="w-full text-center px-2 animate-fade-in">
-              <p className="text-xs text-muted-foreground truncate">{subtitle.original}</p>
-              <p className="text-base font-semibold text-primary leading-tight line-clamp-2">{subtitle.translated}</p>
+            <div className="w-full text-center px-2">
+              <p className="text-xs text-muted-foreground truncate mb-0.5">{subtitle.original}</p>
+              <p className="text-base font-bold text-primary leading-tight line-clamp-2">{subtitle.translated}</p>
             </div>
           ) : status ? (
-            <p className="text-sm text-primary font-medium animate-pulse self-center">{status}</p>
+            <p className="text-sm text-primary font-medium animate-pulse">{status}</p>
           ) : null}
         </div>
 
