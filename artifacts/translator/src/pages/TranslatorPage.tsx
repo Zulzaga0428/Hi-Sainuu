@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, Zap, X } from "lucide-react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, Zap, X, Camera } from "lucide-react";
 
 const LANGUAGES = [
   { code: "mn", label: "Монгол", flag: "🇲🇳" },
@@ -45,6 +45,7 @@ type Turn = {
   translated: string;
   langFrom: string;
   langTo: string;
+  imageUrl?: string;
 };
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -96,6 +97,7 @@ export default function TranslatorPage() {
   const [showPhrases, setShowPhrases] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code)!;
 
@@ -172,6 +174,51 @@ export default function TranslatorPage() {
     } catch (err: any) {
       setError(err.message || "Алдаа гарлаа");
       setStatus("");
+    }
+  };
+
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || status) return;
+    e.target.value = "";
+    const imageUrl = URL.createObjectURL(file);
+    const toLangCode = activeSpeaker === "A" ? langB : langA;
+    setError("");
+    setShowPhrases(false);
+    try {
+      setStatus("Зураг уншиж байна...");
+      const form = new FormData();
+      form.append("image", file);
+      form.append("toLang", toLangCode);
+      const res = await fetch(`${BASE}/api/scan`, { method: "POST", body: form });
+      if (!res.ok) throw new Error("Зураг уншиж чадсангүй");
+      const data = await res.json();
+      if (!data.detected) {
+        setError("Зурагнаас текст олдсонгүй");
+        setStatus("");
+        URL.revokeObjectURL(imageUrl);
+        return;
+      }
+      const newTurn: Turn = {
+        id: Date.now(),
+        speaker: activeSpeaker,
+        original: data.detected,
+        translated: data.translated,
+        langFrom: "auto",
+        langTo: toLangCode,
+        imageUrl,
+      };
+      setTurns((prev) => [...prev, newTurn]);
+      if (toLangCode !== "mn") {
+        setStatus("Дуу гаргаж байна...");
+        await playTTS(data.translated, toLangCode);
+      }
+      setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
+      setStatus("");
+    } catch (err: any) {
+      setError(err.message || "Алдаа гарлаа");
+      setStatus("");
+      URL.revokeObjectURL(imageUrl);
     }
   };
 
@@ -297,25 +344,30 @@ export default function TranslatorPage() {
         )}
         {turns.map((turn) => (
           <div key={turn.id} className={`flex ${turn.speaker === "A" ? "justify-start" : "justify-end"}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${turn.speaker === "A" ? "bg-white border border-border" : "bg-primary text-white"}`}>
-              <div className="text-xs font-semibold mb-1 opacity-60">
-                {getLang(turn.langFrom).flag} {getLang(turn.langFrom).label}
-              </div>
-              <p className="text-sm font-medium">{turn.original}</p>
-              <div className={`mt-2 pt-2 border-t ${turn.speaker === "A" ? "border-border" : "border-white/20"}`}>
-                <div className="flex items-center gap-1 mb-0.5">
-                  <div className="text-xs font-semibold opacity-60">
-                    {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
-                  </div>
-                  {turn.langTo !== "mn" && (
-                    <button onClick={() => playTTS(turn.translated, turn.langTo)} className="opacity-50 hover:opacity-100 ml-1">
-                      <Volume2 size={12} />
-                    </button>
-                  )}
+            <div className={`max-w-[85%] rounded-2xl shadow-sm overflow-hidden ${turn.speaker === "A" ? "bg-white border border-border" : "bg-primary text-white"}`}>
+              {turn.imageUrl && (
+                <img src={turn.imageUrl} alt="scanned" className="w-full max-h-40 object-cover" />
+              )}
+              <div className="px-4 py-3">
+                <div className="text-xs font-semibold mb-1 opacity-60">
+                  {turn.langFrom === "auto" ? "📷 Зурагнаас" : `${getLang(turn.langFrom).flag} ${getLang(turn.langFrom).label}`}
                 </div>
-                <p className={`text-sm ${turn.speaker === "A" ? "text-primary" : "text-white/90"}`}>
-                  {turn.translated}
-                </p>
+                <p className="text-sm font-medium">{turn.original}</p>
+                <div className={`mt-2 pt-2 border-t ${turn.speaker === "A" ? "border-border" : "border-white/20"}`}>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <div className="text-xs font-semibold opacity-60">
+                      {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
+                    </div>
+                    {turn.langTo !== "mn" && (
+                      <button onClick={() => playTTS(turn.translated, turn.langTo)} className="opacity-50 hover:opacity-100 ml-1">
+                        <Volume2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <p className={`text-sm ${turn.speaker === "A" ? "text-primary" : "text-white/90"}`}>
+                    {turn.translated}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -357,7 +409,17 @@ export default function TranslatorPage() {
           </button>
         </div>
 
-        {/* Mic + Quick phrases */}
+        {/* Hidden camera input */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleCameraCapture}
+        />
+
+        {/* Mic + Quick phrases + Camera */}
         <div className="flex items-center justify-center gap-6">
           {/* Quick phrases button */}
           <button
@@ -376,8 +438,14 @@ export default function TranslatorPage() {
             {recording ? <MicOff size={32} className="text-white" /> : <Mic size={32} className="text-white" />}
           </button>
 
-          {/* Spacer to balance layout */}
-          <div className="w-12 h-12" />
+          {/* Camera button */}
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={!!status}
+            className="w-12 h-12 rounded-full flex items-center justify-center border-2 bg-white border-border text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-50"
+          >
+            <Camera size={20} />
+          </button>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-3">

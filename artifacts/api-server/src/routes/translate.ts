@@ -109,4 +109,55 @@ router.post("/tts", async (req, res) => {
   }
 });
 
+// POST /api/scan — image → detected text + translation via GPT-4o vision
+router.post("/scan", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No image provided" });
+      return;
+    }
+
+    const toLang = (req.body.toLang as string) || "mn";
+    const toName = LANG_NAMES[toLang] || toLang;
+
+    const base64 = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype || "image/jpeg";
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Look at this image and extract ALL visible text from it. Then translate that text into ${toName}. 
+Respond in this exact JSON format:
+{"detected": "<original text from image>", "translated": "<translation in ${toName}>"}
+If no text is found, respond: {"detected": "", "translated": "Текст олдсонгүй"}`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType};base64,${base64}` },
+            },
+          ],
+        },
+      ],
+      max_tokens: 1000,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() || "";
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      res.status(500).json({ error: "Parse error" });
+      return;
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    res.json(parsed);
+  } catch (err: any) {
+    req.log.error({ err }, "Scan error");
+    res.status(500).json({ error: err.message || "Scan failed" });
+  }
+});
+
 export default router;
