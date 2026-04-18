@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, Zap, X, Camera } from "lucide-react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send } from "lucide-react";
 
 const LANGUAGES = [
   { code: "mn", label: "Монгол", flag: "🇲🇳" },
@@ -9,33 +9,6 @@ const LANGUAGES = [
   { code: "ja", label: "Япон", flag: "🇯🇵" },
   { code: "ko", label: "Солонгос", flag: "🇰🇷" },
   { code: "th", label: "Тайланд", flag: "🇹🇭" },
-];
-
-const QUICK_PHRASES = [
-  {
-    category: "💰 Үнэ & Худалдаа",
-    phrases: ["Энэ хэд вэ?", "Хямдруулж болох уу?", "Баримт өгнө үү", "Карт хүлээн авах уу?"],
-  },
-  {
-    category: "🚗 Тээвэр & Зам",
-    phrases: ["Такси дуудна уу", "Хаана байна вэ?", "Буудал хаана байна?", "Нисэх онгоцны буудал"],
-  },
-  {
-    category: "🍜 Хоол & Ресторан",
-    phrases: ["Цэс харуулна уу", "Ус авчирна уу", "Тооцоо авъя", "Вегетариан хоол байна уу?"],
-  },
-  {
-    category: "🏥 Яаралтай тусламж",
-    phrases: ["Эмч дуудна уу", "Эмийн сан хаана байна?", "Өвдөж байна", "Яаралтай тусламж хэрэгтэй"],
-  },
-  {
-    category: "🛂 Хил & Оффис",
-    phrases: ["Паспорт шалгана уу", "Визний хугацаа", "Зорилго аялал юм", "Ганцаараа явж байна"],
-  },
-  {
-    category: "🏨 Буудал",
-    phrases: ["Өрөө захиалсан", "Чек ин хэзээ вэ?", "WiFi нууц үг юу вэ?", "Өрөөг цэвэрлэнэ үү"],
-  },
 ];
 
 type Turn = {
@@ -94,16 +67,18 @@ export default function TranslatorPage() {
   const [showLangPicker, setShowLangPicker] = useState<"A" | "B" | null>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
-  const [showPhrases, setShowPhrases] = useState(false);
+  const [showTextInput, setShowTextInput] = useState(false);
+  const [textDraft, setTextDraft] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code)!;
 
   const startRecording = async () => {
     setError("");
-    setShowPhrases(false);
+    setShowTextInput(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
@@ -155,15 +130,17 @@ export default function TranslatorPage() {
     }
   };
 
-  const sendQuickPhrase = async (phrase: string) => {
-    if (status) return;
-    setError("");
+  const sendTextMessage = async () => {
+    const text = textDraft.trim();
+    if (!text || status) return;
     const fromCode = activeSpeaker === "A" ? langA : langB;
     const toCode = activeSpeaker === "A" ? langB : langA;
+    setError("");
+    setTextDraft("");
     try {
       setStatus("Орчуулж байна...");
-      const translated = await apiTranslate(phrase, fromCode, toCode);
-      const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original: phrase, translated, langFrom: fromCode, langTo: toCode };
+      const translated = await apiTranslate(text, fromCode, toCode);
+      const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original: text, translated, langFrom: fromCode, langTo: toCode };
       setTurns((prev) => [...prev, newTurn]);
       if (toCode !== "mn") {
         setStatus("Дуу гаргаж байна...");
@@ -184,7 +161,7 @@ export default function TranslatorPage() {
     const imageUrl = URL.createObjectURL(file);
     const toLangCode = activeSpeaker === "A" ? langB : langA;
     setError("");
-    setShowPhrases(false);
+    setShowTextInput(false);
     try {
       setStatus("Зураг уншиж байна...");
       const form = new FormData();
@@ -227,12 +204,20 @@ export default function TranslatorPage() {
     else startRecording();
   };
 
+  const toggleTextInput = () => {
+    setShowTextInput((v) => {
+      if (!v) setTimeout(() => textInputRef.current?.focus(), 100);
+      return !v;
+    });
+  };
+
   const clearAll = () => {
     setTurns([]);
     setActiveSpeaker("A");
     setStatus("");
     setError("");
-    setShowPhrases(false);
+    setShowTextInput(false);
+    setTextDraft("");
   };
 
   const currentFromLang = activeSpeaker === "A" ? getLang(langA) : getLang(langB);
@@ -299,37 +284,6 @@ export default function TranslatorPage() {
           </div>
         )}
       </div>
-
-      {/* Quick Phrases Panel */}
-      {showPhrases && (
-        <div className="bg-white border-b border-border px-4 py-3 max-h-72 overflow-y-auto">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-foreground">Хурдан хэллэг</span>
-            <button onClick={() => setShowPhrases(false)} className="text-muted-foreground hover:text-foreground">
-              <X size={16} />
-            </button>
-          </div>
-          <div className="space-y-4">
-            {QUICK_PHRASES.map((cat) => (
-              <div key={cat.category}>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">{cat.category}</p>
-                <div className="flex flex-wrap gap-2">
-                  {cat.phrases.map((phrase) => (
-                    <button
-                      key={phrase}
-                      onClick={() => sendQuickPhrase(phrase)}
-                      disabled={!!status}
-                      className="text-xs px-3 py-1.5 bg-accent text-accent-foreground rounded-full hover:bg-primary hover:text-white transition-colors disabled:opacity-50 font-medium"
-                    >
-                      {phrase}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Conversation area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -409,6 +363,39 @@ export default function TranslatorPage() {
           </button>
         </div>
 
+        {/* Text input area — shown when keyboard button is active */}
+        {showTextInput && (
+          <div className="mb-4 flex gap-2 items-end">
+            <textarea
+              ref={textInputRef}
+              value={textDraft}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendTextMessage();
+                }
+              }}
+              placeholder={`${currentFromLang.flag} ${currentFromLang.label}-аар бичнэ үү...`}
+              rows={2}
+              className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={sendTextMessage}
+              disabled={!textDraft.trim() || !!status}
+              className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:bg-primary/90 transition-all flex-shrink-0"
+            >
+              <Send size={16} />
+            </button>
+            <button
+              onClick={() => { setShowTextInput(false); setTextDraft(""); }}
+              className="w-10 h-10 rounded-xl border border-border text-muted-foreground flex items-center justify-center hover:text-foreground transition-all flex-shrink-0"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Hidden camera input */}
         <input
           ref={cameraInputRef}
@@ -419,14 +406,15 @@ export default function TranslatorPage() {
           onChange={handleCameraCapture}
         />
 
-        {/* Mic + Quick phrases + Camera */}
+        {/* Keyboard + Mic + Camera */}
         <div className="flex items-center justify-center gap-6">
-          {/* Quick phrases button */}
+          {/* Text / keyboard button */}
           <button
-            onClick={() => setShowPhrases((v) => !v)}
-            className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all ${showPhrases ? "bg-primary border-primary text-white" : "bg-white border-border text-muted-foreground hover:border-primary hover:text-primary"}`}
+            onClick={toggleTextInput}
+            disabled={recording}
+            className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all disabled:opacity-40 ${showTextInput ? "bg-primary border-primary text-white" : "bg-white border-border text-muted-foreground hover:border-primary hover:text-primary"}`}
           >
-            <Zap size={20} />
+            <Keyboard size={20} />
           </button>
 
           {/* Record button */}
@@ -441,7 +429,7 @@ export default function TranslatorPage() {
           {/* Camera button */}
           <button
             onClick={() => cameraInputRef.current?.click()}
-            disabled={!!status}
+            disabled={!!status || recording}
             className="w-12 h-12 rounded-full flex items-center justify-center border-2 bg-white border-border text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-50"
           >
             <Camera size={20} />
@@ -449,7 +437,13 @@ export default function TranslatorPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-3">
-          {recording ? "Зогсоохын тулд дахин дарна уу" : status ? "Боловсруулж байна..." : "Ярихын тулд дарна уу"}
+          {recording
+            ? "Зогсоохын тулд дахин дарна уу"
+            : showTextInput
+            ? "Бичээд Enter дарна уу"
+            : status
+            ? "Боловсруулж байна..."
+            : "Ярихын тулд дарна уу"}
         </p>
         <p className="text-center text-xs mt-3 text-muted-foreground font-semibold tracking-wide">
           <a href="https://veio.digital/" target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition-opacity">
