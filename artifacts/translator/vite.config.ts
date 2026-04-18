@@ -37,8 +37,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "icons/icon-192.png", "icons/icon-512.png"],
       manifest: {
-        name: "AI Орчуулагч",
-        short_name: "Орчуулагч",
+        name: "Hi Сайн уу",
+        short_name: "Hi Сайн уу",
         description: "Бодит цагийн AI орчуулагч — Монгол болон гадаад хэлнүүд",
         theme_color: "#2563eb",
         background_color: "#f1f5f9",

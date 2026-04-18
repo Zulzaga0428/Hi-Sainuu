@@ -158,7 +158,7 @@ export default function TranslatorPage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Globe size={20} />
-            <h1 className="text-lg font-bold tracking-tight">AI Орчуулагч</h1>
+            <h1 className="text-lg font-bold tracking-tight">Hi Сайн уу</h1>
           </div>
           {turns.length > 0 && (
             <button
