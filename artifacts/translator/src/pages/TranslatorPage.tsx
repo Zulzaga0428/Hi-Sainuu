@@ -271,7 +271,10 @@ export default function TranslatorPage() {
             <span className="font-semibold text-sm">{getLang(langA).label}</span>
             <ChevronDown size={14} className="text-white/70" />
           </button>
-          <div className="text-white/50 text-lg font-light">↔</div>
+          <button
+            onClick={() => { setLangA(langB); setLangB(langA); setShowLangPicker(null); }}
+            className="text-white/80 hover:text-white text-xl px-1 active:scale-90 transition-transform"
+          >↔</button>
           <button
             onClick={() => setShowLangPicker(showLangPicker === "B" ? null : "B")}
             className="flex-1 flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 rounded-xl py-3 px-4"
