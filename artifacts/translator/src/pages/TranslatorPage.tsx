@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send } from "lucide-react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download } from "lucide-react";
 
 const LANGUAGES = [
   { code: "mn", label: "Монгол", flag: "🇲🇳" },
@@ -83,6 +83,21 @@ export default function TranslatorPage() {
   const [showTextInput, setShowTextInput] = useState(false);
   const [textDraft, setTextDraft] = useState("");
   const [subtitle, setSubtitle] = useState<{ original: string; translated: string; toLang: string } | null>(null);
+
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setInstallPrompt(null);
+  };
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -253,12 +268,23 @@ export default function TranslatorPage() {
             <img src="/logo.png" alt="Hi Сайн уу" className="w-8 h-8 rounded-lg object-cover" style={{ filter: "brightness(0) invert(1)" }} />
             <h1 className="text-lg font-bold tracking-tight">Hi Сайн уу</h1>
           </div>
-          {turns.length > 0 && (
-            <button onClick={clearAll} className="flex items-center gap-1 text-white/70 text-sm hover:text-white">
-              <RefreshCw size={14} />
-              Цэвэрлэх
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {installPrompt && (
+              <button
+                onClick={handleInstall}
+                className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+              >
+                <Download size={13} />
+                Татах
+              </button>
+            )}
+            {turns.length > 0 && (
+              <button onClick={clearAll} className="flex items-center gap-1 text-white/70 text-sm hover:text-white">
+                <RefreshCw size={14} />
+                Цэвэрлэх
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Language pair selector */}
