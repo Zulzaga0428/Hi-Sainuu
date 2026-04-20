@@ -85,6 +85,10 @@ export default function TranslatorPage() {
   const [subtitle, setSubtitle] = useState<{ original: string; translated: string; toLang: string } | null>(null);
 
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showIosGuide, setShowIosGuide] = useState(false);
+
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isStandalone = (window.navigator as any).standalone === true || window.matchMedia("(display-mode: standalone)").matches;
 
   useEffect(() => {
     const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
@@ -93,11 +97,14 @@ export default function TranslatorPage() {
   }, []);
 
   const handleInstall = async () => {
+    if (isIos) { setShowIosGuide(true); return; }
     if (!installPrompt) return;
     installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
     if (outcome === "accepted") setInstallPrompt(null);
   };
+
+  const showInstallBtn = !isStandalone && (installPrompt || isIos);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -269,7 +276,7 @@ export default function TranslatorPage() {
             <h1 className="text-lg font-bold tracking-tight">Hi Сайн уу</h1>
           </div>
           <div className="flex items-center gap-2">
-            {installPrompt && (
+            {showInstallBtn && (
               <button
                 onClick={handleInstall}
                 className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded-full active:scale-95 transition-transform"
@@ -500,6 +507,42 @@ export default function TranslatorPage() {
           </a>
         </p>
       </div>
+
+      {/* iOS Install Guide Modal */}
+      {showIosGuide && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4" onClick={() => setShowIosGuide(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 mb-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold text-base">Утсандаа суулгах</h2>
+              <button onClick={() => setShowIosGuide(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <div className="space-y-4 text-sm text-foreground">
+              <div className="flex items-start gap-3">
+                <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">1</span>
+                <p>Safari браузараар <span className="font-semibold">hisainuu.online</span> нээнэ үү</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">2</span>
+                <p>Доод талд байгаа <span className="font-semibold">Share</span> товч дарна уу <span className="text-lg">⎙</span></p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">3</span>
+                <p><span className="font-semibold">"Add to Home Screen"</span> сонгоно уу <span className="text-lg">＋</span></p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">4</span>
+                <p>Баруун дээд буланд <span className="font-semibold">"Add"</span> дарна уу</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowIosGuide(false)}
+              className="w-full mt-5 bg-primary text-white font-semibold py-3 rounded-xl"
+            >
+              Ойлголоо
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
