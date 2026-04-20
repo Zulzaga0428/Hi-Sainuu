@@ -49,7 +49,9 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
       file: audioFile,
       model: "whisper-1",
       language: langCode,
-      prompt: langCode === "mn" ? "Монгол хэл дээр ярьж байна." : undefined,
+      prompt: langCode === "mn"
+        ? "Монгол хэл. Сайн байна уу. Баярлалаа. Та юу хэлэх вэ? Энэ юу вэ? Хэд вэ? Хаана байна вэ? Надад тусална уу. Би ойлгосонгүй. Дахин хэлнэ үү. Хэдэн төгрөг вэ? Хаашаа явах вэ? Буудал хаана байдаг вэ? Та англиар ярьдаг уу? Манай найз. Орчуулна уу."
+        : undefined,
     });
 
     res.json({ text: transcription.text });
