@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download } from "lucide-react";
+import { getT } from "../translations";
 
 const LANGUAGES = [
   { code: "mn", label: "Монгол", flag: "🇲🇳" },
@@ -112,6 +113,7 @@ export default function TranslatorPage() {
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const subtitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const t = getT(langA);
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
 
   const showSubtitle = (original: string, translated: string, toLang: string) => {
@@ -141,9 +143,9 @@ export default function TranslatorPage() {
       mr.start();
       mediaRecorderRef.current = mr;
       setRecording(true);
-      setStatus("Дуу бичиж байна...");
+      setStatus(t.recording);
     } catch {
-      setError("Микрофонд хандах зөвшөөрөл өгнө үү");
+      setError(t.micPermission);
     }
   };
 
@@ -151,7 +153,7 @@ export default function TranslatorPage() {
     if (mediaRecorderRef.current && recording) {
       mediaRecorderRef.current.stop();
       setRecording(false);
-      setStatus("Боловсруулж байна...");
+      setStatus(t.processing);
     }
   };
 
@@ -159,21 +161,21 @@ export default function TranslatorPage() {
     const fromCode = activeSpeaker === "A" ? langA : langB;
     const toCode = activeSpeaker === "A" ? langB : langA;
     try {
-      setStatus("Дуу таниж байна...");
+      setStatus(t.transcribing);
       const original = await apiTranscribe(blob, fromCode);
-      setStatus("Орчуулж байна...");
+      setStatus(t.translating);
       const translated = await apiTranslate(original, fromCode, toCode);
       const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original, translated, langFrom: fromCode, langTo: toCode };
       setTurns((prev) => [...prev, newTurn]);
       showSubtitle(original, translated, toCode);
       if (toCode !== "mn") {
-        setStatus("Дуу гаргаж байна...");
+        setStatus(t.speaking);
         await playTTS(translated, toCode);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || "Алдаа гарлаа");
+      setError(err.message || t.errorGeneric);
       setStatus("");
     }
   };
@@ -186,19 +188,19 @@ export default function TranslatorPage() {
     setError("");
     setTextDraft("");
     try {
-      setStatus("Орчуулж байна...");
+      setStatus(t.translating);
       const translated = await apiTranslate(text, fromCode, toCode);
       const newTurn: Turn = { id: Date.now(), speaker: activeSpeaker, original: text, translated, langFrom: fromCode, langTo: toCode };
       setTurns((prev) => [...prev, newTurn]);
       showSubtitle(text, translated, toCode);
       if (toCode !== "mn") {
-        setStatus("Дуу гаргаж байна...");
+        setStatus(t.speaking);
         await playTTS(translated, toCode);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || "Алдаа гарлаа");
+      setError(err.message || t.errorGeneric);
       setStatus("");
     }
   };
@@ -212,15 +214,15 @@ export default function TranslatorPage() {
     setError("");
     setShowTextInput(false);
     try {
-      setStatus("Зураг уншиж байна...");
+      setStatus(t.scanning);
       const form = new FormData();
       form.append("image", file);
       form.append("toLang", toLangCode);
       const res = await fetch(`${BASE}/api/scan`, { method: "POST", body: form });
-      if (!res.ok) throw new Error("Зураг уншиж чадсангүй");
+      if (!res.ok) throw new Error(t.errorGeneric);
       const data = await res.json();
       if (!data.detected) {
-        setError("Зурагнаас текст олдсонгүй");
+        setError(t.noTextFound);
         setStatus("");
         URL.revokeObjectURL(imageUrl);
         return;
@@ -229,13 +231,13 @@ export default function TranslatorPage() {
       setTurns((prev) => [...prev, newTurn]);
       showSubtitle(data.detected, data.translated, toLangCode);
       if (toLangCode !== "mn") {
-        setStatus("Дуу гаргаж байна...");
+        setStatus(t.speaking);
         await playTTS(data.translated, toLangCode);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || "Алдаа гарлаа");
+      setError(err.message || t.errorGeneric);
       setStatus("");
       URL.revokeObjectURL(imageUrl);
     }
@@ -282,13 +284,13 @@ export default function TranslatorPage() {
                 className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded-full active:scale-95 transition-transform"
               >
                 <Download size={13} />
-                Татах
+                {t.install}
               </button>
             )}
             {turns.length > 0 && (
               <button onClick={clearAll} className="flex items-center gap-1 text-white/70 text-sm hover:text-white">
                 <RefreshCw size={14} />
-                Цэвэрлэх
+                {t.clear}
               </button>
             )}
           </div>
@@ -347,7 +349,7 @@ export default function TranslatorPage() {
         {turns.length === 0 && !status && (
           <div className="text-center text-muted-foreground py-16">
             <Globe size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm font-medium">Ярилцлага эхлэхэд товч дарна уу</p>
+            <p className="text-sm font-medium">{t.start}</p>
             <p className="text-xs mt-1 opacity-70">
               {getLang(langA).flag} {getLang(langA).label} ↔ {getLang(langB).flag} {getLang(langB).label}
             </p>
@@ -361,7 +363,7 @@ export default function TranslatorPage() {
               )}
               <div className="px-4 py-3">
                 <div className="text-xs font-semibold mb-1 opacity-60">
-                  {turn.langFrom === "auto" ? "📷 Зурагнаас" : `${getLang(turn.langFrom).flag} ${getLang(turn.langFrom).label}`}
+                  {turn.langFrom === "auto" ? `📷 ${t.fromImage}` : `${getLang(turn.langFrom).flag} ${getLang(turn.langFrom).label}`}
                 </div>
                 <p className="text-sm font-medium">{turn.original}</p>
                 <div className={`mt-2 pt-2 border-t ${turn.speaker === "A" ? "border-border" : "border-white/20"}`}>
@@ -423,7 +425,7 @@ export default function TranslatorPage() {
               value={textDraft}
               onChange={(e) => setTextDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendTextMessage(); } }}
-              placeholder={`${currentFromLang.flag} ${currentFromLang.label}-аар бичнэ үү...`}
+              placeholder={`${currentFromLang.flag} ${t.writeIn} ${currentFromLang.label}...`}
               rows={2}
               className="flex-1 resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
             />
@@ -499,7 +501,7 @@ export default function TranslatorPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-2">
-          {recording ? "Зогсоохын тулд дахин дарна уу" : showTextInput ? "Бичээд Enter дарна уу" : "Ярихын тулд дарна уу"}
+          {recording ? t.pressToStop : showTextInput ? t.typeAndEnter : t.pressToSpeak}
         </p>
         <p className="text-center text-xs mt-2 text-muted-foreground font-semibold tracking-wide">
           <a href="https://veio.digital/" target="_blank" rel="noopener noreferrer" className="hover:opacity-70 transition-opacity">
@@ -513,32 +515,32 @@ export default function TranslatorPage() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4" onClick={() => setShowIosGuide(false)}>
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 mb-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-base">Утсандаа суулгах</h2>
+              <h2 className="font-bold text-base">{t.installTitle}</h2>
               <button onClick={() => setShowIosGuide(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
             <div className="space-y-4 text-sm text-foreground">
               <div className="flex items-start gap-3">
                 <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">1</span>
-                <p>Safari браузараар <span className="font-semibold">hisainuu.online</span> нээнэ үү</p>
+                <p>{t.iosStep1}</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">2</span>
-                <p>Доод талд байгаа <span className="font-semibold">Share</span> товч дарна уу <span className="text-lg">⎙</span></p>
+                <p>{t.iosStep2}</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">3</span>
-                <p><span className="font-semibold">"Add to Home Screen"</span> сонгоно уу <span className="text-lg">＋</span></p>
+                <p>{t.iosStep3}</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="bg-primary text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs shrink-0">4</span>
-                <p>Баруун дээд буланд <span className="font-semibold">"Add"</span> дарна уу</p>
+                <p>{t.iosStep4}</p>
               </div>
             </div>
             <button
               onClick={() => setShowIosGuide(false)}
               className="w-full mt-5 bg-primary text-white font-semibold py-3 rounded-xl"
             >
-              Ойлголоо
+              {t.gotIt}
             </button>
           </div>
         </div>
