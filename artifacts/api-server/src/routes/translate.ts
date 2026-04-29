@@ -105,7 +105,7 @@ router.post("/translate", async (req, res) => {
 // POST /api/tts — text → audio via OpenAI TTS
 router.post("/tts", async (req, res) => {
   try {
-    const { text, lang } = req.body as { text: string; lang: string };
+    const { text, lang, speed } = req.body as { text: string; lang: string; speed?: number };
 
     if (!text) {
       res.status(400).json({ error: "Missing text" });
@@ -116,6 +116,7 @@ router.post("/tts", async (req, res) => {
       model: "tts-1",
       voice: "alloy",
       input: text,
+      speed: speed && speed >= 0.25 && speed <= 4.0 ? speed : 1.0,
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());
