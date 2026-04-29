@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download } from "lucide-react";
+import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download, Copy, Check } from "lucide-react";
 import { getT } from "../translations";
 
 const LANGUAGES = [
@@ -58,11 +58,11 @@ async function apiTranslate(text: string, fromLang: string, toLang: string): Pro
   return data.translated as string;
 }
 
-async function playTTS(text: string, lang: string) {
+async function playTTS(text: string, lang: string, speed = 1.0) {
   const res = await fetch(`${BASE}/api/tts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, lang }),
+    body: JSON.stringify({ text, lang, speed }),
   });
   if (!res.ok) return;
   const blob = await res.blob();
@@ -87,6 +87,8 @@ export default function TranslatorPage() {
 
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showIosGuide, setShowIosGuide] = useState(false);
+  const [ttsSpeed, setTtsSpeed] = useState(1.0);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
   const isStandalone = (window.navigator as any).standalone === true || window.matchMedia("(display-mode: standalone)").matches;
@@ -170,7 +172,7 @@ export default function TranslatorPage() {
       showSubtitle(original, translated, toCode);
       if (toCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(translated, toCode);
+        await playTTS(translated, toCode, ttsSpeed);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -195,7 +197,7 @@ export default function TranslatorPage() {
       showSubtitle(text, translated, toCode);
       if (toCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(translated, toCode);
+        await playTTS(translated, toCode, ttsSpeed);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -232,7 +234,7 @@ export default function TranslatorPage() {
       showSubtitle(data.detected, data.translated, toLangCode);
       if (toLangCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(data.translated, toLangCode);
+        await playTTS(data.translated, toLangCode, ttsSpeed);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -246,6 +248,13 @@ export default function TranslatorPage() {
   const handleMicPress = () => {
     if (recording) stopRecording();
     else startRecording();
+  };
+
+  const copyText = (text: string, id: number) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
   };
 
   const toggleTextInput = () => {
@@ -372,10 +381,16 @@ export default function TranslatorPage() {
                       {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
                     </div>
                     {turn.langTo !== "mn" && (
-                      <button onClick={() => playTTS(turn.translated, turn.langTo)} className="opacity-50 hover:opacity-100 ml-1">
+                      <button onClick={() => playTTS(turn.translated, turn.langTo, ttsSpeed)} className="opacity-50 hover:opacity-100 ml-1">
                         <Volume2 size={12} />
                       </button>
                     )}
+                    <button
+                      onClick={() => copyText(turn.translated, turn.id)}
+                      className="opacity-50 hover:opacity-100 ml-auto"
+                    >
+                      {copiedId === turn.id ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                    </button>
                   </div>
                   <p className={`text-sm ${turn.speaker === "A" ? "text-primary" : "text-white/90"}`}>
                     {turn.translated}
@@ -400,6 +415,19 @@ export default function TranslatorPage() {
             {error}
           </div>
         )}
+
+        {/* TTS Speed toggle */}
+        <div className="flex items-center justify-center gap-1 mb-3">
+          {([0.75, 1.0, 1.25] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setTtsSpeed(s)}
+              className={`flex-1 py-1 rounded-lg text-xs font-semibold border transition-all ${ttsSpeed === s ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-border hover:border-primary"}`}
+            >
+              {s === 0.75 ? "🐢 Удаан" : s === 1.0 ? "⚡ Хэвийн" : "🐇 Хурдан"}
+            </button>
+          ))}
+        </div>
 
         {/* Speaker toggle */}
         <div className="flex gap-2 mb-3">
