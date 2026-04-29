@@ -45,11 +45,15 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
       type: req.file.mimetype || "audio/webm",
     });
 
+    // For Mongolian: let Whisper auto-detect (better recognition than forced mn)
+    // For other languages: force the language for accuracy
+    const isMn = langCode === "mn";
+
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
       model: "whisper-1",
-      language: langCode,
-      prompt: langCode === "mn"
+      ...(isMn ? {} : { language: langCode }),
+      prompt: isMn
         ? "Монгол хэл. Сайн байна уу. Баярлалаа. Та юу хэлэх вэ? Энэ юу вэ? Хэд вэ? Хаана байна вэ? Надад тусална уу. Би ойлгосонгүй. Дахин хэлнэ үү. Хэдэн төгрөг вэ? Хаашаа явах вэ? Буудал хаана байдаг вэ? Та англиар ярьдаг уу? Манай найз. Орчуулна уу."
         : undefined,
     });
