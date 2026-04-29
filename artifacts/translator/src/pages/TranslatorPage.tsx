@@ -424,7 +424,7 @@ export default function TranslatorPage() {
               onClick={() => setTtsSpeed(s)}
               className={`flex-1 py-1 rounded-lg text-xs font-semibold border transition-all ${ttsSpeed === s ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-border hover:border-primary"}`}
             >
-              {s === 0.75 ? "🐢 Удаан" : s === 1.0 ? "⚡ Хэвийн" : "🐇 Хурдан"}
+              {s === 0.75 ? t.speedSlow : s === 1.0 ? t.speedNormal : t.speedFast}
             </button>
           ))}
         </div>
