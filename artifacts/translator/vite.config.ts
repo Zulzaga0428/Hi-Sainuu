@@ -5,27 +5,17 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from "vite-plugin-pwa";
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
+// PORT only matters for the local dev / preview server. In production the built
+// static files are served by @workspace/api-server, so default it when unset.
+const port = Number(process.env.PORT) || 5173;
 
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+  throw new Error(`Invalid PORT value: "${process.env.PORT}"`);
 }
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+// BASE_PATH is baked into the bundle at build time (asset URLs, PWA scope).
+// Defaults to "/" — set it only when hosting under a sub-path.
+const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
   base: basePath,
@@ -40,7 +30,7 @@ export default defineConfig({
         name: "Hi Сайн уу",
         short_name: "Hi Сайн уу",
         description: "Бодит цагийн AI орчуулагч — Монгол болон гадаад хэлнүүд",
-        theme_color: "#2563eb",
+        theme_color: "#CD2E3A",
         background_color: "#f1f5f9",
         display: "standalone",
         orientation: "portrait",

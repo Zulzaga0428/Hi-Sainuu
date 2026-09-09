@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pnpm run build && mkdir -p artifacts/api-server/dist/public && cp -r artifacts/translator/dist/public/. artifacts/api-server/dist/public/"
+  },
+  "deploy": {
+    "startCommand": "node artifacts/api-server/dist/index.mjs",
+    "healthcheckPath": "/api/healthz",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}

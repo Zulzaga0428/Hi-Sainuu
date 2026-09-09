@@ -2,11 +2,17 @@
 
 # compiled output
 dist
+dev-dist
 tmp
 out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+
+# env
+.env
+.env.local
+.env.*.local
 
 # dependencies
 node_modules

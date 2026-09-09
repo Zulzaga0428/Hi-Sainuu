@@ -37,12 +37,30 @@ type Turn = {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+const STORE_KEY = "hisainuu.state.v1";
+
+type PersistedState = {
+  langA: string;
+  langB: string;
+  ttsSpeed: number;
+  turns: Turn[];
+};
+
+function loadState(): Partial<PersistedState> {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    return raw ? (JSON.parse(raw) as Partial<PersistedState>) : {};
+  } catch {
+    return {};
+  }
+}
+
 async function apiTranscribe(audioBlob: Blob, lang: string): Promise<string> {
   const form = new FormData();
   form.append("audio", audioBlob, "audio.webm");
   form.append("lang", lang);
   const res = await fetch(`${BASE}/api/transcribe`, { method: "POST", body: form });
-  if (!res.ok) throw new Error("Дуу таниж чадсангүй");
+  if (!res.ok) throw new Error("ERR_TRANSCRIBE");
   const data = await res.json();
   return data.text as string;
 }
@@ -53,7 +71,7 @@ async function apiTranslate(text: string, fromLang: string, toLang: string): Pro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, fromLang, toLang }),
   });
-  if (!res.ok) throw new Error("Орчуулж чадсангүй");
+  if (!res.ok) throw new Error("ERR_TRANSLATE");
   const data = await res.json();
   return data.translated as string;
 }
@@ -73,11 +91,12 @@ async function playTTS(text: string, lang: string, speed = 1.0) {
 }
 
 export default function TranslatorPage() {
-  const [langA, setLangA] = useState("mn");
-  const [langB, setLangB] = useState("en");
+  const persisted = useRef(loadState()).current;
+  const [langA, setLangA] = useState(persisted.langA ?? "mn");
+  const [langB, setLangB] = useState(persisted.langB ?? "en");
   const [activeSpeaker, setActiveSpeaker] = useState<"A" | "B">("A");
   const [recording, setRecording] = useState(false);
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>(persisted.turns ?? []);
   const [showLangPicker, setShowLangPicker] = useState<"A" | "B" | null>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -87,7 +106,7 @@ export default function TranslatorPage() {
 
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showIosGuide, setShowIosGuide] = useState(false);
-  const [ttsSpeed, setTtsSpeed] = useState(1.0);
+  const [ttsSpeed, setTtsSpeed] = useState(persisted.ttsSpeed ?? 1.0);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -114,9 +133,43 @@ export default function TranslatorPage() {
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const subtitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollEndRef = useRef<HTMLDivElement | null>(null);
 
   const t = getT(langA);
   const getLang = (code: string) => LANGUAGES.find((l) => l.code === code) ?? LANGUAGES[0];
+
+  const errMessage = (err: any): string => {
+    switch (err?.message) {
+      case "ERR_TRANSCRIBE":
+        return t.transcribeFail;
+      case "ERR_TRANSLATE":
+        return t.translateFail;
+      default:
+        return t.errorGeneric;
+    }
+  };
+
+  // Persist conversation + settings (blob: image URLs don't survive a reload)
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORE_KEY,
+        JSON.stringify({
+          langA,
+          langB,
+          ttsSpeed,
+          turns: turns.slice(-50).map((turn) => ({ ...turn, imageUrl: undefined })),
+        }),
+      );
+    } catch {
+      // ignore quota / private-mode errors
+    }
+  }, [langA, langB, ttsSpeed, turns]);
+
+  // Keep the newest message in view
+  useEffect(() => {
+    scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, status, subtitle]);
 
   const showSubtitle = (original: string, translated: string, toLang: string) => {
     if (subtitleTimerRef.current) clearTimeout(subtitleTimerRef.current);
@@ -177,7 +230,7 @@ export default function TranslatorPage() {
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || t.errorGeneric);
+      setError(errMessage(err));
       setStatus("");
     }
   };
@@ -202,7 +255,7 @@ export default function TranslatorPage() {
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || t.errorGeneric);
+      setError(errMessage(err));
       setStatus("");
     }
   };
@@ -239,13 +292,14 @@ export default function TranslatorPage() {
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
     } catch (err: any) {
-      setError(err.message || t.errorGeneric);
+      setError(errMessage(err));
       setStatus("");
       URL.revokeObjectURL(imageUrl);
     }
   };
 
   const handleMicPress = () => {
+    navigator.vibrate?.(15);
     if (recording) stopRecording();
     else startRecording();
   };
@@ -280,7 +334,10 @@ export default function TranslatorPage() {
   return (
     <div className="bg-background flex flex-col max-w-md mx-auto overflow-hidden" style={{ height: "100dvh" }}>
       {/* Header */}
-      <div className="bg-primary px-4 pt-10 pb-5 text-white">
+      <div
+        className="bg-primary px-4 pt-10 pb-5 text-white"
+        style={{ paddingTop: "calc(2.5rem + env(safe-area-inset-top))" }}
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <img src="/logo.png" alt="Hi Сайн уу" className="w-8 h-8 rounded-lg object-cover" style={{ filter: "brightness(0) invert(1)" }} />
@@ -400,10 +457,14 @@ export default function TranslatorPage() {
             </div>
           </div>
         ))}
+        <div ref={scrollEndRef} />
       </div>
 
       {/* Bottom controls */}
-      <div className="px-4 pb-5 pt-3 border-t border-border bg-background">
+      <div
+        className="px-4 pb-5 pt-3 border-t border-border bg-background"
+        style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}
+      >
         <div className="text-center mb-2">
           <span className="text-xs text-muted-foreground">
             {currentFromLang.flag} {currentFromLang.label} → {currentToLang.flag} {currentToLang.label}
@@ -506,6 +567,7 @@ export default function TranslatorPage() {
           <button
             onClick={toggleTextInput}
             disabled={recording}
+            aria-label={t.typeAndEnter}
             className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all disabled:opacity-40 ${showTextInput ? "bg-primary border-primary text-white" : "bg-white border-border text-muted-foreground hover:border-primary hover:text-primary"}`}
           >
             <Keyboard size={20} />
@@ -514,6 +576,8 @@ export default function TranslatorPage() {
           <button
             onClick={handleMicPress}
             disabled={!!status && !recording}
+            aria-label={recording ? t.pressToStop : t.pressToSpeak}
+            aria-pressed={recording}
             className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 disabled:opacity-50 ${recording ? "bg-destructive scale-110" : "bg-primary hover:bg-primary/90"}`}
           >
             {recording ? <MicOff size={32} className="text-white" /> : <Mic size={32} className="text-white" />}
@@ -522,6 +586,7 @@ export default function TranslatorPage() {
           <button
             onClick={() => cameraInputRef.current?.click()}
             disabled={!!status || recording}
+            aria-label={t.scanning}
             className="w-12 h-12 rounded-full flex items-center justify-center border-2 bg-white border-border text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-50"
           >
             <Camera size={20} />
