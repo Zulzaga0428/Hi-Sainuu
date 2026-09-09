@@ -69,17 +69,20 @@ node artifacts/api-server/dist/index.mjs
 
 ## Deploy — Railway
 
-`railway.json` already defines the build and start commands.
+Build via the root **`Dockerfile`** (one service for the whole repo).
+`railway.json` forces the Dockerfile builder and sets the health check.
 
 1. **Railway → New Project → Deploy from GitHub repo** → pick `Hi-Sainuu`.
-2. Railway auto-detects Nixpacks + pnpm. No root directory override needed.
-3. **Variables** (service → Variables):
-   - `OPENAI_API_KEY` — your key
-   - `BASE_PATH` — `/`
-   - `NODE_ENV` — `production`
-   - `PORT` is injected by Railway automatically.
-4. **Networking → Generate Domain** (or add a custom domain).
-5. Every push to `main` redeploys. Health check: `GET /api/healthz`.
+2. Railway may auto-create **one service per workspace package** — delete all
+   but one. Keep a single service (rename it e.g. `hi-sainuu`).
+3. That service → **Settings**:
+   - **Root Directory:** empty (repo root)
+   - **Build:** Dockerfile (auto-picked from `railway.json`)
+4. That service → **Variables**:
+   - `OPENAI_API_KEY` — your key (the only required var; `BASE_PATH` defaults
+     to `/`, `PORT` is injected by Railway)
+5. **Settings → Networking → Generate Domain** (or add a custom domain).
+6. Every push to `main` redeploys. Health check: `GET /api/healthz`.
 
 ## Database — Neon (not wired yet)
 
