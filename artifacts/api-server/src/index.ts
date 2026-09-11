@@ -21,5 +21,11 @@ app.listen(port, (err) => {
     process.exit(1);
   }
 
+  if (!process.env["OPENAI_API_KEY"]) {
+    logger.warn(
+      "OPENAI_API_KEY is not set — /api/transcribe, /translate, /tts and /scan will answer 503.",
+    );
+  }
+
   logger.info({ port }, "Server listening");
 });

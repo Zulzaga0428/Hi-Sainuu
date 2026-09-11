@@ -1,12 +1,35 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import OpenAI from "openai";
 import multer from "multer";
-import { Readable } from "stream";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// The OpenAI client is created on first use, not at import time: without a key
+// the constructor throws, which used to kill the whole process at boot — taking
+// /api/healthz and the static client down with it.
+let openaiClient: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+    openaiClient = new OpenAI({ apiKey });
+  }
+  return openaiClient;
+}
+
+// Returns null and answers 503 when the server has no API key configured, so a
+// misconfigured deploy degrades to "AI features unavailable" instead of a crash loop.
+function openaiOrFail(req: Request, res: Response): OpenAI | null {
+  try {
+    return getOpenAI();
+  } catch (err) {
+    req.log.error({ err }, "OpenAI client unavailable");
+    res.status(503).json({ error: "AI service is not configured" });
+    return null;
+  }
+}
 
 const LANG_NAMES: Record<string, string> = {
   mn: "Mongolian",
@@ -39,9 +62,12 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
       return;
     }
 
+    const openai = openaiOrFail(req, res);
+    if (!openai) return;
+
     const langCode = (req.body.lang as string) || "mn";
 
-    const audioFile = new File([req.file.buffer], "audio.webm", {
+    const audioFile = new File([new Uint8Array(req.file.buffer)], "audio.webm", {
       type: req.file.mimetype || "audio/webm",
     });
 
@@ -77,6 +103,9 @@ router.post("/translate", async (req, res) => {
       return;
     }
 
+    const openai = openaiOrFail(req, res);
+    if (!openai) return;
+
     const fromName = LANG_NAMES[fromLang] || fromLang;
     const toName = LANG_NAMES[toLang] || toLang;
 
@@ -110,6 +139,9 @@ router.post("/tts", async (req, res) => {
       return;
     }
 
+    const openai = openaiOrFail(req, res);
+    if (!openai) return;
+
     const mp3 = await openai.audio.speech.create({
       model: "tts-1",
       voice: "alloy",
@@ -134,6 +166,9 @@ router.post("/scan", upload.single("image"), async (req, res) => {
       res.status(400).json({ error: "No image provided" });
       return;
     }
+
+    const openai = openaiOrFail(req, res);
+    if (!openai) return;
 
     const toLang = (req.body.toLang as string) || "mn";
     const toName = LANG_NAMES[toLang] || toLang;
