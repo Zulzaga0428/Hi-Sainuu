@@ -30,7 +30,7 @@ export type T = {
   iosStep4: string;
 };
 
-const TRANSLATIONS: Record<string, T> = {
+export const TRANSLATIONS: Record<string, T> = {
   mn: {
     start: "Ярилцлага эхлэхэд товч дарна уу",
     pressToSpeak: "Ярихын тулд дарна уу",

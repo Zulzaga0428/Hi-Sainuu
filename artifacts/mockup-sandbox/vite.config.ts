@@ -5,27 +5,17 @@ import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { mockupPreviewPlugin } from "./mockupPreviewPlugin";
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
+// PORT and BASE_PATH only matter for the dev/preview server and the asset
+// URLs. Requiring them here made `vite build` — and with it the workspace-wide
+// `pnpm run build` — fail whenever they were unset, which is the normal case in
+// CI and on a plain checkout. Default them like the translator config does.
+const port = Number(process.env.PORT) || 5173;
 
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+  throw new Error(`Invalid PORT value: "${process.env.PORT}"`);
 }
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+const basePath = process.env.BASE_PATH || "/";
 
 export default defineConfig({
   base: basePath,

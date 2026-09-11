@@ -45,6 +45,9 @@ cp .env.example .env          # then fill in OPENAI_API_KEY
 # type-check everything
 pnpm run typecheck
 
+# run the tests (node:test, no browser needed)
+pnpm run test
+
 # run the API (builds itself, listens on $PORT)
 pnpm --filter @workspace/api-server run dev
 
@@ -66,6 +69,16 @@ mkdir -p artifacts/api-server/dist/public
 cp -r artifacts/translator/dist/public/. artifacts/api-server/dist/public/
 node artifacts/api-server/dist/index.mjs
 ```
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: install with a
+frozen lockfile, `pnpm run typecheck`, `pnpm run test`, `pnpm run build`, and a
+`docker build` of the image Railway deploys.
+
+Tests use Node's built-in runner (`node:test`) via `tsx` — no test framework
+dependency. The API tests point the OpenAI SDK at a local fake through
+`OPENAI_BASE_URL`, so they never reach the network or spend anything.
 
 ## Deploy — Railway
 

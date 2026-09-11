@@ -58,7 +58,7 @@ const AUDIO_EXTENSIONS: Record<string, string> = {
   "audio/flac": "flac",
 };
 
-function audioFileName(mimeType: string): string {
+export function audioFileName(mimeType: string): string {
   const base = mimeType.split(";")[0].trim().toLowerCase();
   return `audio.${AUDIO_EXTENSIONS[base] ?? "webm"}`;
 }

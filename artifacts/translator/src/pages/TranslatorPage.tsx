@@ -1,29 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download, Copy, Check } from "lucide-react";
 import { getT } from "../translations";
-
-const LANGUAGES = [
-  { code: "mn", label: "Монгол", flag: "🇲🇳" },
-  { code: "en", label: "Англи", flag: "🇺🇸" },
-  { code: "zh", label: "Хятад", flag: "🇨🇳" },
-  { code: "ru", label: "Орос", flag: "🇷🇺" },
-  { code: "ja", label: "Япон", flag: "🇯🇵" },
-  { code: "ko", label: "Солонгос", flag: "🇰🇷" },
-  { code: "th", label: "Тайланд", flag: "🇹🇭" },
-  { code: "tr", label: "Турк", flag: "🇹🇷" },
-  { code: "de", label: "Герман", flag: "🇩🇪" },
-  { code: "fr", label: "Франц", flag: "🇫🇷" },
-  { code: "es", label: "Испани", flag: "🇪🇸" },
-  { code: "it", label: "Итали", flag: "🇮🇹" },
-  { code: "ar", label: "Араб", flag: "🇦🇪" },
-  { code: "hi", label: "Хинди", flag: "🇮🇳" },
-  { code: "vi", label: "Вьетнам", flag: "🇻🇳" },
-  { code: "id", label: "Индонези", flag: "🇮🇩" },
-  { code: "ms", label: "Малайз", flag: "🇲🇾" },
-  { code: "pt", label: "Португал", flag: "🇵🇹" },
-  { code: "pl", label: "Польш", flag: "🇵🇱" },
-  { code: "uk", label: "Украин", flag: "🇺🇦" },
-];
+import { extensionForMime, pickRecordingMimeType } from "../lib/audio-format";
+import { LANGUAGES } from "../lib/languages";
 
 type Turn = {
   id: number;
@@ -38,31 +17,6 @@ type Turn = {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const STORE_KEY = "hisainuu.state.v1";
-
-// Safari records audio/mp4, Chrome and Firefox audio/webm. Whisper rejects a
-// file whose name and content-type don't match its actual bytes, so record in
-// whatever the browser supports and label the upload with that same format
-// instead of always claiming "audio.webm".
-const RECORDING_MIME_TYPES = [
-  "audio/webm;codecs=opus",
-  "audio/webm",
-  "audio/mp4",
-  "audio/ogg;codecs=opus",
-];
-
-function pickRecordingMimeType(): string | undefined {
-  if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return undefined;
-  return RECORDING_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
-}
-
-function extensionForMime(mimeType: string): string {
-  const base = mimeType.split(";")[0].trim().toLowerCase();
-  if (base.includes("mp4") || base.includes("m4a") || base.includes("aac")) return "mp4";
-  if (base.includes("ogg")) return "ogg";
-  if (base.includes("wav")) return "wav";
-  if (base.includes("mpeg") || base.includes("mp3")) return "mp3";
-  return "webm";
-}
 
 type PersistedState = {
   langA: string;
