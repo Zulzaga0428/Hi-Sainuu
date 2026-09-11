@@ -1,6 +1,16 @@
 import { Router, type Request, type Response } from "express";
 import OpenAI from "openai";
 import multer from "multer";
+import type { ZodError } from "zod";
+import {
+  ScanBody,
+  ScanResponse,
+  SpeakBody,
+  TranscribeBody,
+  TranscribeResponse,
+  TranslateBody,
+  TranslateResponse,
+} from "@workspace/api-zod";
 import { createRateLimiter } from "../middlewares/rate-limit";
 
 const router = Router();
@@ -36,10 +46,14 @@ function openaiOrFail(req: Request, res: Response): OpenAI | null {
   }
 }
 
-// Bounds the cost of a single call. OpenAI's TTS endpoint rejects anything
-// over 4096 characters outright, so stop short of a call we know will fail.
-const MAX_TRANSLATE_CHARS = 5000;
-const MAX_TTS_CHARS = 4096;
+// Request shapes — including the length caps that bound what one call can cost
+// — come from lib/api-spec/openapi.yaml via the generated schemas, so the spec,
+// the client hooks and this validation cannot drift apart.
+function invalidRequest(res: Response, error: ZodError): void {
+  const issue = error.issues[0];
+  const field = issue?.path.join(".") || "body";
+  res.status(400).json({ error: `Invalid ${field}: ${issue?.message ?? "invalid"}` });
+}
 
 // Whisper picks its decoder from the file name and content type, so an mp4
 // recording (Safari) must not be uploaded as "audio.webm". Derived from the
@@ -63,7 +77,7 @@ export function audioFileName(mimeType: string): string {
   return `audio.${AUDIO_EXTENSIONS[base] ?? "webm"}`;
 }
 
-const LANG_NAMES: Record<string, string> = {
+export const LANG_NAMES: Record<string, string> = {
   mn: "Mongolian",
   en: "English",
   zh: "Chinese (Simplified)",
@@ -97,7 +111,14 @@ router.post("/transcribe", aiLimiter, upload.single("audio"), async (req, res) =
     const openai = openaiOrFail(req, res);
     if (!openai) return;
 
-    const langCode = (req.body.lang as string) || "mn";
+    // The file itself is validated by multer; the rest of the form is ours.
+    const fields = TranscribeBody.pick({ lang: true }).safeParse(req.body);
+    if (!fields.success) {
+      invalidRequest(res, fields.error);
+      return;
+    }
+
+    const langCode = fields.data.lang;
 
     const mimeType = req.file.mimetype || "audio/webm";
     const audioFile = new File([new Uint8Array(req.file.buffer)], audioFileName(mimeType), {
@@ -115,7 +136,7 @@ router.post("/transcribe", aiLimiter, upload.single("audio"), async (req, res) =
         : undefined,
     });
 
-    res.json({ text: transcription.text });
+    res.json(TranscribeResponse.parse({ text: transcription.text }));
   } catch (err) {
     req.log.error({ err }, "Transcription error");
     res.status(500).json({ error: "Transcription failed" });
@@ -125,21 +146,13 @@ router.post("/transcribe", aiLimiter, upload.single("audio"), async (req, res) =
 // POST /api/translate — text → translated text via GPT
 router.post("/translate", aiLimiter, async (req, res) => {
   try {
-    const { text, fromLang, toLang } = req.body as {
-      text: string;
-      fromLang: string;
-      toLang: string;
-    };
-
-    if (!text || !fromLang || !toLang) {
-      res.status(400).json({ error: "Missing text, fromLang, or toLang" });
+    const body = TranslateBody.safeParse(req.body);
+    if (!body.success) {
+      invalidRequest(res, body.error);
       return;
     }
 
-    if (text.length > MAX_TRANSLATE_CHARS) {
-      res.status(413).json({ error: "Text is too long" });
-      return;
-    }
+    const { text, fromLang, toLang } = body.data;
 
     const openai = openaiOrFail(req, res);
     if (!openai) return;
@@ -160,7 +173,7 @@ router.post("/translate", aiLimiter, async (req, res) => {
     });
 
     const translated = completion.choices[0]?.message?.content?.trim() || "";
-    res.json({ translated });
+    res.json(TranslateResponse.parse({ translated }));
   } catch (err) {
     req.log.error({ err }, "Translation error");
     res.status(500).json({ error: "Translation failed" });
@@ -170,17 +183,13 @@ router.post("/translate", aiLimiter, async (req, res) => {
 // POST /api/tts — text → audio via OpenAI TTS
 router.post("/tts", aiLimiter, async (req, res) => {
   try {
-    const { text, lang, speed } = req.body as { text: string; lang: string; speed?: number };
-
-    if (!text) {
-      res.status(400).json({ error: "Missing text" });
+    const body = SpeakBody.safeParse(req.body);
+    if (!body.success) {
+      invalidRequest(res, body.error);
       return;
     }
 
-    if (text.length > MAX_TTS_CHARS) {
-      res.status(413).json({ error: "Text is too long" });
-      return;
-    }
+    const { text, speed } = body.data;
 
     const openai = openaiOrFail(req, res);
     if (!openai) return;
@@ -189,7 +198,7 @@ router.post("/tts", aiLimiter, async (req, res) => {
       model: "tts-1",
       voice: "alloy",
       input: text,
-      speed: speed && speed >= 0.25 && speed <= 4.0 ? speed : 1.0,
+      speed: speed ?? 1.0,
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());
@@ -213,7 +222,13 @@ router.post("/scan", aiLimiter, upload.single("image"), async (req, res) => {
     const openai = openaiOrFail(req, res);
     if (!openai) return;
 
-    const toLang = (req.body.toLang as string) || "mn";
+    const fields = ScanBody.pick({ toLang: true }).safeParse(req.body);
+    if (!fields.success) {
+      invalidRequest(res, fields.error);
+      return;
+    }
+
+    const toLang = fields.data.toLang;
     const toName = LANG_NAMES[toLang] || toLang;
 
     const base64 = req.file.buffer.toString("base64");
@@ -248,8 +263,15 @@ If no text is found, respond: {"detected": "", "translated": "Текст олд�
       res.status(500).json({ error: "Parse error" });
       return;
     }
-    const parsed = JSON.parse(jsonMatch[0]);
-    res.json(parsed);
+    // The model was asked for this shape, but it is still model output.
+    const parsed = ScanResponse.safeParse(JSON.parse(jsonMatch[0]));
+    if (!parsed.success) {
+      req.log.error({ err: parsed.error }, "Scan returned an unexpected shape");
+      res.status(500).json({ error: "Scan failed" });
+      return;
+    }
+
+    res.json(parsed.data);
   } catch (err) {
     req.log.error({ err }, "Scan error");
     res.status(500).json({ error: "Scan failed" });

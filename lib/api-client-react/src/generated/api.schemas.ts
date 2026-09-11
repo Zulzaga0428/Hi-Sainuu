@@ -8,3 +8,106 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  /** A message safe to show a user; details stay in the server log */
+  error: string;
+}
+
+/**
+ * One of the languages the app offers
+ */
+export type LanguageCode = (typeof LanguageCode)[keyof typeof LanguageCode];
+
+export const LanguageCode = {
+  mn: "mn",
+  en: "en",
+  zh: "zh",
+  ru: "ru",
+  ja: "ja",
+  ko: "ko",
+  th: "th",
+  tr: "tr",
+  de: "de",
+  fr: "fr",
+  es: "es",
+  it: "it",
+  ar: "ar",
+  hi: "hi",
+  vi: "vi",
+  id: "id",
+  ms: "ms",
+  pt: "pt",
+  pl: "pl",
+  uk: "uk",
+} as const;
+
+export interface TranscribeRequest {
+  /** The recorded clip, at most 25 MB */
+  audio: Blob;
+  lang: LanguageCode;
+}
+
+export interface TranscriptionResult {
+  text: string;
+}
+
+export interface TranslateRequest {
+  /**
+   * @minLength 1
+   * @maxLength 5000
+   */
+  text: string;
+  fromLang: LanguageCode;
+  toLang: LanguageCode;
+}
+
+export interface TranslationResult {
+  translated: string;
+}
+
+export interface SpeakRequest {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  text: string;
+  lang?: LanguageCode;
+  /**
+   * @minimum 0.25
+   * @maximum 4
+   */
+  speed?: number;
+}
+
+export interface ScanRequest {
+  /** The photo to read, at most 25 MB */
+  image: Blob;
+  toLang: LanguageCode;
+}
+
+export interface ScanResult {
+  /** The text found in the image, empty when none was found */
+  detected: string;
+  translated: string;
+}
+
+/**
+ * The request body failed validation
+ */
+export type BadRequestResponse = ErrorResponse;
+
+/**
+ * Per-IP rate limit exceeded
+ */
+export type TooManyRequestsResponse = ErrorResponse;
+
+/**
+ * The upstream AI call failed
+ */
+export type ServerErrorResponse = ErrorResponse;
+
+/**
+ * The server has no OpenAI API key configured
+ */
+export type NotConfiguredResponse = ErrorResponse;

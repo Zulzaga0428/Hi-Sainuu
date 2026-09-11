@@ -70,6 +70,24 @@ cp -r artifacts/translator/dist/public/. artifacts/api-server/dist/public/
 node artifacts/api-server/dist/index.mjs
 ```
 
+## API contract
+
+`lib/api-spec/openapi.yaml` is the source of truth for every endpoint. Orval
+generates the Zod schemas (`lib/api-zod`) and the React Query hooks
+(`lib/api-client-react`) from it, and the server validates each request against
+those same generated schemas — so the documented shape, the length caps and the
+accepted language codes cannot drift from what the API enforces.
+
+After editing the spec:
+
+```bash
+pnpm --filter @workspace/api-spec run codegen
+```
+
+Note: Orval names an operation's schemas after its `operationId`, so a component
+schema must not be called `<OperationId>Response` — the package index would then
+re-export two different things under one name.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push and pull request: install with a

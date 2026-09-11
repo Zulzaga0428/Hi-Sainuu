@@ -5,18 +5,34 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  BadRequestResponse,
+  HealthStatus,
+  NotConfiguredResponse,
+  ScanRequest,
+  ScanResult,
+  ServerErrorResponse,
+  SpeakRequest,
+  TooManyRequestsResponse,
+  TranscribeRequest,
+  TranscriptionResult,
+  TranslateRequest,
+  TranslationResult,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +115,416 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Turns a recorded audio clip into text with Whisper. Send the clip in the
+format the browser actually recorded — the content type decides how it is
+decoded.
+
+ * @summary Transcribe speech
+ */
+export const getTranscribeUrl = () => {
+  return `/api/transcribe`;
+};
+
+export const transcribe = async (
+  transcribeRequest: TranscribeRequest,
+  options?: RequestInit,
+): Promise<TranscriptionResult> => {
+  const formData = new FormData();
+  formData.append(`audio`, transcribeRequest.audio);
+  formData.append(`lang`, transcribeRequest.lang);
+
+  return customFetch<TranscriptionResult>(getTranscribeUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getTranscribeMutationOptions = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof transcribe>>,
+    TError,
+    { data: BodyType<TranscribeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof transcribe>>,
+  TError,
+  { data: BodyType<TranscribeRequest> },
+  TContext
+> => {
+  const mutationKey = ["transcribe"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof transcribe>>,
+    { data: BodyType<TranscribeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return transcribe(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TranscribeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof transcribe>>
+>;
+export type TranscribeMutationBody = BodyType<TranscribeRequest>;
+export type TranscribeMutationError = ErrorType<
+  | BadRequestResponse
+  | TooManyRequestsResponse
+  | ServerErrorResponse
+  | NotConfiguredResponse
+>;
+
+/**
+ * @summary Transcribe speech
+ */
+export const useTranscribe = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof transcribe>>,
+    TError,
+    { data: BodyType<TranscribeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof transcribe>>,
+  TError,
+  { data: BodyType<TranscribeRequest> },
+  TContext
+> => {
+  return useMutation(getTranscribeMutationOptions(options));
+};
+
+/**
+ * @summary Translate text
+ */
+export const getTranslateUrl = () => {
+  return `/api/translate`;
+};
+
+export const translate = async (
+  translateRequest: TranslateRequest,
+  options?: RequestInit,
+): Promise<TranslationResult> => {
+  return customFetch<TranslationResult>(getTranslateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(translateRequest),
+  });
+};
+
+export const getTranslateMutationOptions = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof translate>>,
+    TError,
+    { data: BodyType<TranslateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof translate>>,
+  TError,
+  { data: BodyType<TranslateRequest> },
+  TContext
+> => {
+  const mutationKey = ["translate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof translate>>,
+    { data: BodyType<TranslateRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return translate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TranslateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof translate>>
+>;
+export type TranslateMutationBody = BodyType<TranslateRequest>;
+export type TranslateMutationError = ErrorType<
+  | BadRequestResponse
+  | TooManyRequestsResponse
+  | ServerErrorResponse
+  | NotConfiguredResponse
+>;
+
+/**
+ * @summary Translate text
+ */
+export const useTranslate = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof translate>>,
+    TError,
+    { data: BodyType<TranslateRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof translate>>,
+  TError,
+  { data: BodyType<TranslateRequest> },
+  TContext
+> => {
+  return useMutation(getTranslateMutationOptions(options));
+};
+
+/**
+ * Renders text as speech and returns the audio as MP3 bytes.
+ * @summary Speak text
+ */
+export const getSpeakUrl = () => {
+  return `/api/tts`;
+};
+
+export const speak = async (
+  speakRequest: SpeakRequest,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getSpeakUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(speakRequest),
+  });
+};
+
+export const getSpeakMutationOptions = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof speak>>,
+    TError,
+    { data: BodyType<SpeakRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof speak>>,
+  TError,
+  { data: BodyType<SpeakRequest> },
+  TContext
+> => {
+  const mutationKey = ["speak"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof speak>>,
+    { data: BodyType<SpeakRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return speak(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SpeakMutationResult = NonNullable<
+  Awaited<ReturnType<typeof speak>>
+>;
+export type SpeakMutationBody = BodyType<SpeakRequest>;
+export type SpeakMutationError = ErrorType<
+  | BadRequestResponse
+  | TooManyRequestsResponse
+  | ServerErrorResponse
+  | NotConfiguredResponse
+>;
+
+/**
+ * @summary Speak text
+ */
+export const useSpeak = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof speak>>,
+    TError,
+    { data: BodyType<SpeakRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof speak>>,
+  TError,
+  { data: BodyType<SpeakRequest> },
+  TContext
+> => {
+  return useMutation(getSpeakMutationOptions(options));
+};
+
+/**
+ * @summary Read and translate the text in an image
+ */
+export const getScanUrl = () => {
+  return `/api/scan`;
+};
+
+export const scan = async (
+  scanRequest: ScanRequest,
+  options?: RequestInit,
+): Promise<ScanResult> => {
+  const formData = new FormData();
+  formData.append(`image`, scanRequest.image);
+  formData.append(`toLang`, scanRequest.toLang);
+
+  return customFetch<ScanResult>(getScanUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getScanMutationOptions = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scan>>,
+    TError,
+    { data: BodyType<ScanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scan>>,
+  TError,
+  { data: BodyType<ScanRequest> },
+  TContext
+> => {
+  const mutationKey = ["scan"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scan>>,
+    { data: BodyType<ScanRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return scan(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScanMutationResult = NonNullable<Awaited<ReturnType<typeof scan>>>;
+export type ScanMutationBody = BodyType<ScanRequest>;
+export type ScanMutationError = ErrorType<
+  | BadRequestResponse
+  | TooManyRequestsResponse
+  | ServerErrorResponse
+  | NotConfiguredResponse
+>;
+
+/**
+ * @summary Read and translate the text in an image
+ */
+export const useScan = <
+  TError = ErrorType<
+    | BadRequestResponse
+    | TooManyRequestsResponse
+    | ServerErrorResponse
+    | NotConfiguredResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scan>>,
+    TError,
+    { data: BodyType<ScanRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scan>>,
+  TError,
+  { data: BodyType<ScanRequest> },
+  TContext
+> => {
+  return useMutation(getScanMutationOptions(options));
+};

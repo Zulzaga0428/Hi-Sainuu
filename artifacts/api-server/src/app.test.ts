@@ -60,26 +60,43 @@ test("rejects a cross-origin browser request when no allowlist is set", async ()
 test("validates the translate payload before spending anything", async () => {
   const server = await listenOn(app);
   try {
-    const missing = await fetch(`${server.url}/api/translate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "hi" }),
-    });
-    assert.equal(missing.status, 400);
+    const post = (path: string, body: unknown) =>
+      fetch(`${server.url}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-    const tooLong = await fetch(`${server.url}/api/translate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "a".repeat(5001), fromLang: "en", toLang: "mn" }),
-    });
-    assert.equal(tooLong.status, 413);
+    // Missing field.
+    assert.equal((await post("/api/translate", { text: "hi" })).status, 400);
 
-    const tooLongTts = await fetch(`${server.url}/api/tts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "a".repeat(4097) }),
-    });
-    assert.equal(tooLongTts.status, 413);
+    // Empty text is not worth a call.
+    assert.equal(
+      (await post("/api/translate", { text: "", fromLang: "en", toLang: "mn" })).status,
+      400,
+    );
+
+    // A language the app does not offer.
+    assert.equal(
+      (await post("/api/translate", { text: "hi", fromLang: "en", toLang: "xx" })).status,
+      400,
+    );
+
+    // Length caps come from the OpenAPI spec: 5000 for translate, 4096 for tts.
+    assert.equal(
+      (await post("/api/translate", { text: "a".repeat(5001), fromLang: "en", toLang: "mn" }))
+        .status,
+      400,
+    );
+    assert.equal((await post("/api/tts", { text: "a".repeat(4097) })).status, 400);
+
+    // Out-of-range playback speed.
+    assert.equal((await post("/api/tts", { text: "hi", speed: 9 })).status, 400);
+
+    // A validation failure says which field, without leaking internals.
+    const res = await post("/api/translate", { text: "hi", fromLang: "en", toLang: "xx" });
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, /^Invalid toLang: /);
   } finally {
     await server.close();
   }
