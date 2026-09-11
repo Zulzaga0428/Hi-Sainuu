@@ -2,12 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+// Railway (and any other edge proxy) terminates TLS and forwards the client IP
+// in X-Forwarded-For. Without this, req.ip is the proxy's address and every
+// visitor shares a single rate-limit bucket.
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -28,7 +33,27 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Same-origin by default: in production this server also serves the client, so
+// no cross-origin browser access is needed. The AI routes cost money per call,
+// so a wildcard CORS policy would let any website spend our OpenAI budget.
+// Set ALLOWED_ORIGINS (comma-separated) to opt specific origins in.
+const allowedOrigins = (process.env["ALLOWED_ORIGINS"] ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
+    // No Origin header: same-origin requests, curl, native apps.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    callback(null, allowedOrigins.includes(origin));
+  },
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

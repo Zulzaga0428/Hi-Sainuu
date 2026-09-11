@@ -1,8 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import OpenAI from "openai";
 import multer from "multer";
+import { createRateLimiter } from "../middlewares/rate-limit";
 
 const router = Router();
+
+// Every route below hits a paid OpenAI endpoint, so they share one IP budget.
+const aiLimiter = createRateLimiter();
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // The OpenAI client is created on first use, not at import time: without a key
@@ -31,6 +36,11 @@ function openaiOrFail(req: Request, res: Response): OpenAI | null {
   }
 }
 
+// Bounds the cost of a single call. OpenAI's TTS endpoint rejects anything
+// over 4096 characters outright, so stop short of a call we know will fail.
+const MAX_TRANSLATE_CHARS = 5000;
+const MAX_TTS_CHARS = 4096;
+
 const LANG_NAMES: Record<string, string> = {
   mn: "Mongolian",
   en: "English",
@@ -55,7 +65,7 @@ const LANG_NAMES: Record<string, string> = {
 };
 
 // POST /api/transcribe — audio → text via Whisper
-router.post("/transcribe", upload.single("audio"), async (req, res) => {
+router.post("/transcribe", aiLimiter, upload.single("audio"), async (req, res) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: "No audio file provided" });
@@ -83,14 +93,14 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
     });
 
     res.json({ text: transcription.text });
-  } catch (err: any) {
+  } catch (err) {
     req.log.error({ err }, "Transcription error");
-    res.status(500).json({ error: err.message || "Transcription failed" });
+    res.status(500).json({ error: "Transcription failed" });
   }
 });
 
 // POST /api/translate — text → translated text via GPT
-router.post("/translate", async (req, res) => {
+router.post("/translate", aiLimiter, async (req, res) => {
   try {
     const { text, fromLang, toLang } = req.body as {
       text: string;
@@ -100,6 +110,11 @@ router.post("/translate", async (req, res) => {
 
     if (!text || !fromLang || !toLang) {
       res.status(400).json({ error: "Missing text, fromLang, or toLang" });
+      return;
+    }
+
+    if (text.length > MAX_TRANSLATE_CHARS) {
+      res.status(413).json({ error: "Text is too long" });
       return;
     }
 
@@ -123,19 +138,24 @@ router.post("/translate", async (req, res) => {
 
     const translated = completion.choices[0]?.message?.content?.trim() || "";
     res.json({ translated });
-  } catch (err: any) {
+  } catch (err) {
     req.log.error({ err }, "Translation error");
-    res.status(500).json({ error: err.message || "Translation failed" });
+    res.status(500).json({ error: "Translation failed" });
   }
 });
 
 // POST /api/tts — text → audio via OpenAI TTS
-router.post("/tts", async (req, res) => {
+router.post("/tts", aiLimiter, async (req, res) => {
   try {
     const { text, lang, speed } = req.body as { text: string; lang: string; speed?: number };
 
     if (!text) {
       res.status(400).json({ error: "Missing text" });
+      return;
+    }
+
+    if (text.length > MAX_TTS_CHARS) {
+      res.status(413).json({ error: "Text is too long" });
       return;
     }
 
@@ -153,14 +173,14 @@ router.post("/tts", async (req, res) => {
     res.set("Content-Type", "audio/mpeg");
     res.set("Content-Length", String(buffer.length));
     res.send(buffer);
-  } catch (err: any) {
+  } catch (err) {
     req.log.error({ err }, "TTS error");
-    res.status(500).json({ error: err.message || "TTS failed" });
+    res.status(500).json({ error: "TTS failed" });
   }
 });
 
 // POST /api/scan — image → detected text + translation via GPT-4o vision
-router.post("/scan", upload.single("image"), async (req, res) => {
+router.post("/scan", aiLimiter, upload.single("image"), async (req, res) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: "No image provided" });
@@ -207,9 +227,9 @@ If no text is found, respond: {"detected": "", "translated": "Текст олд�
     }
     const parsed = JSON.parse(jsonMatch[0]);
     res.json(parsed);
-  } catch (err: any) {
+  } catch (err) {
     req.log.error({ err }, "Scan error");
-    res.status(500).json({ error: err.message || "Scan failed" });
+    res.status(500).json({ error: "Scan failed" });
   }
 });
 

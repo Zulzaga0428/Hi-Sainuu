@@ -81,6 +81,8 @@ Build via the root **`Dockerfile`** (one service for the whole repo).
 4. That service → **Variables**:
    - `OPENAI_API_KEY` — your key (the only required var; `BASE_PATH` defaults
      to `/`, `PORT` is injected by Railway)
+   - Without the key the server still boots and serves the client; the AI
+     routes answer `503` until it is set.
 5. **Settings → Networking → Generate Domain** (or add a custom domain).
 6. Every push to `main` redeploys. Health check: `GET /api/healthz`.
 
@@ -100,6 +102,9 @@ The server does not touch Postgres today. When the first table is added to
 | `OPENAI_API_KEY` | api-server       | yes      | Whisper + GPT-4o-mini + TTS            |
 | `PORT`           | api-server       | runtime  | Railway sets it; default 8080 locally  |
 | `BASE_PATH`      | translator build | no       | defaults to `/`                        |
+| `ALLOWED_ORIGINS`| api-server       | no       | cross-origin allowlist; empty = same-origin only |
+| `RATE_LIMIT_MAX` | api-server       | no       | AI calls per IP per window (default 20) |
+| `RATE_LIMIT_WINDOW_MS` | api-server | no      | rate-limit window in ms (default 60000) |
 | `DATABASE_URL`   | api-server       | not yet  | Neon pooled URL, once a table exists   |
 
 ## Roadmap
