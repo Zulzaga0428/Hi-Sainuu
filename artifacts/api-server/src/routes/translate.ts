@@ -41,6 +41,28 @@ function openaiOrFail(req: Request, res: Response): OpenAI | null {
 const MAX_TRANSLATE_CHARS = 5000;
 const MAX_TTS_CHARS = 4096;
 
+// Whisper picks its decoder from the file name and content type, so an mp4
+// recording (Safari) must not be uploaded as "audio.webm". Derived from the
+// client-supplied mime type, but constrained to this whitelist so the name we
+// hand to the API is never attacker-controlled.
+const AUDIO_EXTENSIONS: Record<string, string> = {
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mp4": "mp4",
+  "audio/m4a": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/mpga": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/flac": "flac",
+};
+
+function audioFileName(mimeType: string): string {
+  const base = mimeType.split(";")[0].trim().toLowerCase();
+  return `audio.${AUDIO_EXTENSIONS[base] ?? "webm"}`;
+}
+
 const LANG_NAMES: Record<string, string> = {
   mn: "Mongolian",
   en: "English",
@@ -77,8 +99,9 @@ router.post("/transcribe", aiLimiter, upload.single("audio"), async (req, res) =
 
     const langCode = (req.body.lang as string) || "mn";
 
-    const audioFile = new File([new Uint8Array(req.file.buffer)], "audio.webm", {
-      type: req.file.mimetype || "audio/webm",
+    const mimeType = req.file.mimetype || "audio/webm";
+    const audioFile = new File([new Uint8Array(req.file.buffer)], audioFileName(mimeType), {
+      type: mimeType,
     });
 
     const isMn = langCode === "mn";
