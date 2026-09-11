@@ -102,7 +102,14 @@ dependency. The API tests point the OpenAI SDK at a local fake through
 ## Deploy — Railway
 
 Build via the root **`Dockerfile`** (one service for the whole repo).
-`railway.json` forces the Dockerfile builder and sets the health check.
+`railway.json` forces the Dockerfile builder, sets the start command and the
+health check.
+
+> The start command lives in `railway.json`, not in the Railway dashboard —
+> config in the repo takes precedence, so the dashboard's "Custom Start Command"
+> field is ignored. It must be runnable inside the runtime stage, which holds
+> only Node and the bundle: no `pnpm`, no workspace, no scripts. CI starts the
+> image with this exact command.
 
 The Dockerfile is multi-stage: the build stage installs the workspace and
 compiles both packages, and the runtime stage carries only the api-server

@@ -46,11 +46,17 @@ jobs:
 
       # Building is not proof it runs: the runtime stage ships only the bundle,
       # so anything it still needs from node_modules or the sources would only
-      # surface on boot.
+      # surface on boot. Start it the way Railway does — with the command from
+      # railway.json, not the image's CMD — or a start command that cannot run
+      # inside this image passes here and fails in production.
       - name: Smoke-test the image
         run: |
+          START_COMMAND=$(jq -er '.deploy.startCommand' railway.json)
+          echo "start command: $START_COMMAND"
+
           docker run -d --name hi-sainuu-ci -p 8080:8080 \
-            -e OPENAI_API_KEY=sk-ci-not-a-real-key hi-sainuu:ci
+            -e OPENAI_API_KEY=sk-ci-not-a-real-key hi-sainuu:ci \
+            sh -c "$START_COMMAND"
 
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/api/healthz >/dev/null 2>&1; then
