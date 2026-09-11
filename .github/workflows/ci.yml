@@ -43,3 +43,32 @@ jobs:
       # Railway deploys this exact Dockerfile, so a broken image is a broken
       # deploy — build it here rather than finding out in production.
       - run: docker build -t hi-sainuu:ci .
+
+      # Building is not proof it runs: the runtime stage ships only the bundle,
+      # so anything it still needs from node_modules or the sources would only
+      # surface on boot.
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name hi-sainuu-ci -p 8080:8080 \
+            -e OPENAI_API_KEY=sk-ci-not-a-real-key hi-sainuu:ci
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          if ! curl -fsS http://127.0.0.1:8080/api/healthz; then
+            echo "--- container logs ---"
+            docker logs hi-sainuu-ci
+            exit 1
+          fi
+          echo
+
+          # The built client is served from the same image.
+          curl -fsS -o /dev/null -w 'index.html -> %{http_code}\n' http://127.0.0.1:8080/
+
+          docker image inspect hi-sainuu:ci --format 'image size: {{.Size}} bytes'
+
+          docker rm -f hi-sainuu-ci
