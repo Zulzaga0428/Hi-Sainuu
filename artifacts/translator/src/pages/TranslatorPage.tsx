@@ -1,29 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Globe, ChevronDown, RefreshCw, Volume2, X, Camera, Keyboard, Send, Download, Copy, Check } from "lucide-react";
 import { getT } from "../translations";
-
-const LANGUAGES = [
-  { code: "mn", label: "Монгол", flag: "🇲🇳" },
-  { code: "en", label: "Англи", flag: "🇺🇸" },
-  { code: "zh", label: "Хятад", flag: "🇨🇳" },
-  { code: "ru", label: "Орос", flag: "🇷🇺" },
-  { code: "ja", label: "Япон", flag: "🇯🇵" },
-  { code: "ko", label: "Солонгос", flag: "🇰🇷" },
-  { code: "th", label: "Тайланд", flag: "🇹🇭" },
-  { code: "tr", label: "Турк", flag: "🇹🇷" },
-  { code: "de", label: "Герман", flag: "🇩🇪" },
-  { code: "fr", label: "Франц", flag: "🇫🇷" },
-  { code: "es", label: "Испани", flag: "🇪🇸" },
-  { code: "it", label: "Итали", flag: "🇮🇹" },
-  { code: "ar", label: "Араб", flag: "🇦🇪" },
-  { code: "hi", label: "Хинди", flag: "🇮🇳" },
-  { code: "vi", label: "Вьетнам", flag: "🇻🇳" },
-  { code: "id", label: "Индонези", flag: "🇮🇩" },
-  { code: "ms", label: "Малайз", flag: "🇲🇾" },
-  { code: "pt", label: "Португал", flag: "🇵🇹" },
-  { code: "pl", label: "Польш", flag: "🇵🇱" },
-  { code: "uk", label: "Украин", flag: "🇺🇦" },
-];
+import { extensionForMime, pickRecordingMimeType } from "../lib/audio-format";
+import { LANGUAGES } from "../lib/languages";
 
 type Turn = {
   id: number;
@@ -57,7 +36,8 @@ function loadState(): Partial<PersistedState> {
 
 async function apiTranscribe(audioBlob: Blob, lang: string): Promise<string> {
   const form = new FormData();
-  form.append("audio", audioBlob, "audio.webm");
+  const fileName = `audio.${extensionForMime(audioBlob.type || "audio/webm")}`;
+  form.append("audio", audioBlob, fileName);
   form.append("lang", lang);
   const res = await fetch(`${BASE}/api/transcribe`, { method: "POST", body: form });
   if (!res.ok) throw new Error("ERR_TRANSCRIBE");
@@ -76,18 +56,61 @@ async function apiTranslate(text: string, fromLang: string, toLang: string): Pro
   return data.translated as string;
 }
 
-async function playTTS(text: string, lang: string, speed = 1.0) {
-  const res = await fetch(`${BASE}/api/tts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, lang, speed }),
-  });
-  if (!res.ok) return;
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  audio.play();
-  audio.onended = () => URL.revokeObjectURL(url);
+// iOS Safari only plays an <audio> element that a user gesture started. Our TTS
+// clip arrives after an await — long outside that window — so a fresh
+// `new Audio(url).play()` is silently blocked there. Instead keep one element,
+// prime it with a silent clip during a real tap, and reuse it afterwards.
+const SILENT_CLIP =
+  "data:audio/wav;base64,UklGRmQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YUAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
+
+let ttsAudio: HTMLAudioElement | null = null;
+let ttsObjectUrl: string | null = null;
+let audioUnlocked = false;
+
+function getTtsAudio(): HTMLAudioElement {
+  if (!ttsAudio) {
+    ttsAudio = new Audio();
+    ttsAudio.preload = "auto";
+  }
+  return ttsAudio;
+}
+
+/** Call from a user gesture (tap) before any awaited TTS playback. */
+function unlockAudio() {
+  if (audioUnlocked) return;
+  const audio = getTtsAudio();
+  audio.src = SILENT_CLIP;
+  audio
+    .play()
+    .then(() => {
+      audioUnlocked = true;
+    })
+    .catch(() => {
+      // Still locked — playTTS reports the failure to the user.
+    });
+}
+
+async function playTTS(text: string, lang: string, speed = 1.0): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/api/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, lang, speed }),
+    });
+    if (!res.ok) return false;
+
+    const blob = await res.blob();
+    const audio = getTtsAudio();
+
+    if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+    ttsObjectUrl = URL.createObjectURL(blob);
+    audio.src = ttsObjectUrl;
+
+    await audio.play();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default function TranslatorPage() {
@@ -187,12 +210,14 @@ export default function TranslatorPage() {
     setSubtitle(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
+      const mimeType = pickRecordingMimeType();
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        // mr.mimeType is what the browser actually recorded, whatever we asked for.
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || mimeType || "audio/webm" });
         await processAudio(blob);
       };
       mr.start();
@@ -225,7 +250,8 @@ export default function TranslatorPage() {
       showSubtitle(original, translated, toCode);
       if (toCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(translated, toCode, ttsSpeed);
+        const spoken = await playTTS(translated, toCode, ttsSpeed);
+        if (!spoken) setError(t.ttsFail);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -238,6 +264,7 @@ export default function TranslatorPage() {
   const sendTextMessage = async () => {
     const text = textDraft.trim();
     if (!text || status) return;
+    unlockAudio();
     const fromCode = activeSpeaker === "A" ? langA : langB;
     const toCode = activeSpeaker === "A" ? langB : langA;
     setError("");
@@ -250,7 +277,8 @@ export default function TranslatorPage() {
       showSubtitle(text, translated, toCode);
       if (toCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(translated, toCode, ttsSpeed);
+        const spoken = await playTTS(translated, toCode, ttsSpeed);
+        if (!spoken) setError(t.ttsFail);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -287,7 +315,8 @@ export default function TranslatorPage() {
       showSubtitle(data.detected, data.translated, toLangCode);
       if (toLangCode !== "mn") {
         setStatus(t.speaking);
-        await playTTS(data.translated, toLangCode, ttsSpeed);
+        const spoken = await playTTS(data.translated, toLangCode, ttsSpeed);
+        if (!spoken) setError(t.ttsFail);
       }
       setActiveSpeaker((s) => (s === "A" ? "B" : "A"));
       setStatus("");
@@ -300,6 +329,7 @@ export default function TranslatorPage() {
 
   const handleMicPress = () => {
     navigator.vibrate?.(15);
+    unlockAudio();
     if (recording) stopRecording();
     else startRecording();
   };
@@ -438,7 +468,14 @@ export default function TranslatorPage() {
                       {getLang(turn.langTo).flag} {getLang(turn.langTo).label}
                     </div>
                     {turn.langTo !== "mn" && (
-                      <button onClick={() => playTTS(turn.translated, turn.langTo, ttsSpeed)} className="opacity-50 hover:opacity-100 ml-1">
+                      <button
+                        onClick={async () => {
+                          unlockAudio();
+                          const spoken = await playTTS(turn.translated, turn.langTo, ttsSpeed);
+                          if (!spoken) setError(t.ttsFail);
+                        }}
+                        className="opacity-50 hover:opacity-100 ml-1"
+                      >
                         <Volume2 size={12} />
                       </button>
                     )}
@@ -584,7 +621,7 @@ export default function TranslatorPage() {
           </button>
 
           <button
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={() => { unlockAudio(); cameraInputRef.current?.click(); }}
             disabled={!!status || recording}
             aria-label={t.scanning}
             className="w-12 h-12 rounded-full flex items-center justify-center border-2 bg-white border-border text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-50"

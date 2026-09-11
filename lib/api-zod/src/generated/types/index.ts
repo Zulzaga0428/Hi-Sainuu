@@ -6,4 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./badRequestResponse";
+export * from "./errorResponse";
 export * from "./healthStatus";
+export * from "./languageCode";
+export * from "./notConfiguredResponse";
+export * from "./scanRequest";
+export * from "./scanResult";
+export * from "./serverErrorResponse";
+export * from "./speakRequest";
+export * from "./tooManyRequestsResponse";
+export * from "./transcribeRequest";
+export * from "./transcriptionResult";
+export * from "./translateRequest";
+export * from "./translationResult";

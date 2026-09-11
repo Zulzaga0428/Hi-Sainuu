@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: translate
+    description: Speech, text and image translation
 paths:
   /healthz:
     get:
@@ -24,7 +26,148 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /transcribe:
+    post:
+      operationId: transcribe
+      tags: [translate]
+      summary: Transcribe speech
+      description: |
+        Turns a recorded audio clip into text with Whisper. Send the clip in the
+        format the browser actually recorded — the content type decides how it is
+        decoded.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/TranscribeRequest"
+      responses:
+        "200":
+          description: Transcribed text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+
+  /translate:
+    post:
+      operationId: translate
+      tags: [translate]
+      summary: Translate text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranslateRequest"
+      responses:
+        "200":
+          description: Translated text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+
+  /tts:
+    post:
+      operationId: speak
+      tags: [translate]
+      summary: Speak text
+      description: Renders text as speech and returns the audio as MP3 bytes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpeakRequest"
+      responses:
+        "200":
+          description: MP3 audio
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+
+  /scan:
+    post:
+      operationId: scan
+      tags: [translate]
+      summary: Read and translate the text in an image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ScanRequest"
+      responses:
+        "200":
+          description: Detected text and its translation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "503":
+          $ref: "#/components/responses/NotConfigured"
+
 components:
+  responses:
+    BadRequest:
+      description: The request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Per-IP rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: The upstream AI call failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotConfigured:
+      description: The server has no OpenAI API key configured
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +177,105 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: A message safe to show a user; details stay in the server log
+      required:
+        - error
+
+    LanguageCode:
+      type: string
+      description: One of the languages the app offers
+      enum:
+        [mn, en, zh, ru, ja, ko, th, tr, de, fr, es, it, ar, hi, vi, id, ms, pt, pl, uk]
+
+    TranscribeRequest:
+      type: object
+      properties:
+        audio:
+          type: string
+          format: binary
+          description: The recorded clip, at most 25 MB
+        lang:
+          $ref: "#/components/schemas/LanguageCode"
+      required:
+        - audio
+        - lang
+
+    TranscriptionResult:
+      type: object
+      properties:
+        text:
+          type: string
+      required:
+        - text
+
+    TranslateRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        fromLang:
+          $ref: "#/components/schemas/LanguageCode"
+        toLang:
+          $ref: "#/components/schemas/LanguageCode"
+      required:
+        - text
+        - fromLang
+        - toLang
+
+    TranslationResult:
+      type: object
+      properties:
+        translated:
+          type: string
+      required:
+        - translated
+
+    SpeakRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          # OpenAI's speech endpoint rejects anything longer.
+          maxLength: 4096
+        lang:
+          $ref: "#/components/schemas/LanguageCode"
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4
+          default: 1
+      required:
+        - text
+
+    ScanRequest:
+      type: object
+      properties:
+        image:
+          type: string
+          format: binary
+          description: The photo to read, at most 25 MB
+        toLang:
+          $ref: "#/components/schemas/LanguageCode"
+      required:
+        - image
+        - toLang
+
+    ScanResult:
+      type: object
+      properties:
+        detected:
+          type: string
+          description: The text found in the image, empty when none was found
+        translated:
+          type: string
+      required:
+        - detected
+        - translated

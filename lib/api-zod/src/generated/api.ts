@@ -14,3 +14,185 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Turns a recorded audio clip into text with Whisper. Send the clip in the
+format the browser actually recorded — the content type decides how it is
+decoded.
+
+ * @summary Transcribe speech
+ */
+export const TranscribeBody = zod.object({
+  audio: zod.instanceof(File).describe("The recorded clip, at most 25 MB"),
+  lang: zod
+    .enum([
+      "mn",
+      "en",
+      "zh",
+      "ru",
+      "ja",
+      "ko",
+      "th",
+      "tr",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "ar",
+      "hi",
+      "vi",
+      "id",
+      "ms",
+      "pt",
+      "pl",
+      "uk",
+    ])
+    .describe("One of the languages the app offers"),
+});
+
+export const TranscribeResponse = zod.object({
+  text: zod.string(),
+});
+
+/**
+ * @summary Translate text
+ */
+export const translateBodyTextMax = 5000;
+
+export const TranslateBody = zod.object({
+  text: zod.string().min(1).max(translateBodyTextMax),
+  fromLang: zod
+    .enum([
+      "mn",
+      "en",
+      "zh",
+      "ru",
+      "ja",
+      "ko",
+      "th",
+      "tr",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "ar",
+      "hi",
+      "vi",
+      "id",
+      "ms",
+      "pt",
+      "pl",
+      "uk",
+    ])
+    .describe("One of the languages the app offers"),
+  toLang: zod
+    .enum([
+      "mn",
+      "en",
+      "zh",
+      "ru",
+      "ja",
+      "ko",
+      "th",
+      "tr",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "ar",
+      "hi",
+      "vi",
+      "id",
+      "ms",
+      "pt",
+      "pl",
+      "uk",
+    ])
+    .describe("One of the languages the app offers"),
+});
+
+export const TranslateResponse = zod.object({
+  translated: zod.string(),
+});
+
+/**
+ * Renders text as speech and returns the audio as MP3 bytes.
+ * @summary Speak text
+ */
+export const speakBodyTextMax = 4096;
+
+export const speakBodySpeedDefault = 1;
+export const speakBodySpeedMin = 0.25;
+export const speakBodySpeedMax = 4;
+
+export const SpeakBody = zod.object({
+  text: zod.string().min(1).max(speakBodyTextMax),
+  lang: zod
+    .enum([
+      "mn",
+      "en",
+      "zh",
+      "ru",
+      "ja",
+      "ko",
+      "th",
+      "tr",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "ar",
+      "hi",
+      "vi",
+      "id",
+      "ms",
+      "pt",
+      "pl",
+      "uk",
+    ])
+    .optional()
+    .describe("One of the languages the app offers"),
+  speed: zod
+    .number()
+    .min(speakBodySpeedMin)
+    .max(speakBodySpeedMax)
+    .default(speakBodySpeedDefault),
+});
+
+/**
+ * @summary Read and translate the text in an image
+ */
+export const ScanBody = zod.object({
+  image: zod.instanceof(File).describe("The photo to read, at most 25 MB"),
+  toLang: zod
+    .enum([
+      "mn",
+      "en",
+      "zh",
+      "ru",
+      "ja",
+      "ko",
+      "th",
+      "tr",
+      "de",
+      "fr",
+      "es",
+      "it",
+      "ar",
+      "hi",
+      "vi",
+      "id",
+      "ms",
+      "pt",
+      "pl",
+      "uk",
+    ])
+    .describe("One of the languages the app offers"),
+});
+
+export const ScanResponse = zod.object({
+  detected: zod
+    .string()
+    .describe("The text found in the image, empty when none was found"),
+  translated: zod.string(),
+});

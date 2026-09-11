@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
+    // File and Blob, used by the generated multipart schemas.
+    "lib": ["es2022", "dom"],
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
